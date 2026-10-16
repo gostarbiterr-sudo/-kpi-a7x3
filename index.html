@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Анализ магазина</title>
+<meta name="description" content="Анализ KPI магазина и продавцов по выгрузкам. Файлы обрабатываются на устройстве.">
+<meta name="theme-color" content="#1f3864">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Анализ KPI">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root{--bg:#f4f5f7;--surface:#fcfcfb;--line:#e3e4e1;--text:#0b0b0b;--text2:#52514e;--muted:#7a7975;--accent:#1f3864;--good:#0ca30c;--bad:#d03b3b;--goodbg:#e7f6e7;--badbg:#fbe7e7;--warnbg:#fff4d6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#121211;--surface:#1a1a19;--line:#33332f;--text:#f0efec;--text2:#c3c2b7;--muted:#9a9890;--accent:#9fb5e0;--goodbg:#173317;--badbg:#3d1d1d;--warnbg:#3a2f12}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+#setup{max-width:640px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 16px 40px}
+.app-h{display:flex;align-items:center;gap:12px;margin-bottom:6px}.app-h img{width:44px;height:44px;border-radius:10px}
+.app-h h1{font-size:21px;margin:0}.app-h p{margin:0;color:var(--text2);font-size:13px}
+.app-h .icon-btn{margin-left:auto}
+.privacy{background:var(--goodbg);border-radius:10px;padding:8px 12px;font-size:13px;color:var(--text2);margin:10px 0 16px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}
+.box h2{font-size:16px;margin:0 0 10px;display:flex;align-items:center;gap:8px}.box h2 span{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--surface);font-size:13px}
+.btn,#setup button,#bar button,dialog button{font:600 15px/1.2 inherit;font-family:inherit;border-radius:12px;border:0;padding:13px 16px;cursor:pointer;background:var(--accent);color:var(--surface)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.btn input{display:none}
+#setup .ghost,#bar .ghost,dialog .ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.icon-btn{background:transparent;color:var(--text2);border:1px solid var(--line);padding:8px 12px;font-size:13px}
+.row{display:flex;gap:8px;margin-top:10px}.row>*{flex:1}
+.hint{color:var(--text2);font-size:14px;margin:10px 0 0}
+.flist{margin:12px 0 6px;display:flex;flex-direction:column;gap:4px}
+.fi{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 8px;background:var(--bg);border-radius:8px}.fn{overflow-wrap:anywhere}.fs{color:var(--muted);white-space:nowrap}
+.sum div{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0}.sum b{width:100%;font-size:13px;color:var(--text2)}
+.st{font-size:13px;font-weight:600;border-radius:12px;padding:3px 10px}.st.ok{background:var(--goodbg)}.st.no{background:var(--badbg)}.st small{font-weight:400;color:var(--muted)}
+.muted{color:var(--muted);font-size:13px}.warn{background:var(--warnbg);border-radius:10px;padding:8px 12px;font-size:13px}
+details{margin-top:8px}summary{cursor:pointer;color:var(--accent);font-size:14px;padding:6px 0}
+.rd{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}.rdi{font-size:12.5px;padding:6px 8px;border-radius:8px;background:var(--bg)}.rdi.used{background:var(--goodbg)}
+.code-row{display:flex;gap:8px}.code-row input{flex:1;min-width:0;font:600 20px/1 inherit;font-family:inherit;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);text-transform:uppercase}
+.choice{display:block;width:100%;text-align:left;background:var(--bg);color:var(--text);border:1px solid var(--line);margin:6px 0;font-weight:400}
+#busy{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--accent);color:var(--surface);padding:8px 16px;border-radius:20px;font-size:14px;z-index:30}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));margin:0 auto;max-width:520px;background:var(--text);color:var(--surface);padding:10px 14px;border-radius:12px;font-size:14px;z-index:30;text-align:center}
+#report{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+#report .top{padding-top:calc(10px + env(safe-area-inset-top))}#report .tabs{top:0}
+#bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);z-index:25}
+#bar button{flex:1;padding:12px 4px;font-size:13.5px;white-space:nowrap}
+.seg2{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px}
+.seg2 button{flex:1;background:transparent!important;color:var(--text2)!important;border:0!important;padding:10px 8px!important;border-radius:9px!important}
+.seg2 button.on{background:var(--surface)!important;color:var(--text)!important;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.seg2.small button{padding:8px 6px!important;font-size:14px!important}
+.code-row select{flex:1;min-width:0;font:600 17px inherit;font-family:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+#plansDlg{max-width:520px;max-height:92vh;overflow:auto}.dlg-h{display:flex;align-items:center;justify-content:space-between;gap:8px}.dlg-h h2{margin:0}
+.x{padding:6px 12px!important}#plansObj{margin:8px 0 12px}
+.pf-row{display:grid;grid-template-columns:1fr 132px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.pf-row label{font-size:14px}.pf-row small{display:block;color:var(--muted);font-size:12px}
+.pf-row input{width:100%;font:600 16px inherit;font-family:inherit;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);text-align:right}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;margin:12px 0 4px}.chk small{display:block;color:var(--muted)}
+dialog{border:0;border-radius:16px;padding:18px;max-width:420px;width:calc(100% - 32px);background:var(--surface);color:var(--text)}
+dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 10px}
+#normsForm label{display:block;font-size:13px;color:var(--text2);margin:10px 0}#normsForm input{display:block;width:100%;margin-top:4px;font:600 17px inherit;font-family:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="setup">
+  <div class="app-h"><img src="icons/icon-192.png" alt=""><div><h1>Анализ магазина</h1><p>KPI, продавцы и план действий</p></div><button class="icon-btn" id="normsBtn" type="button">Нормы</button></div>
+  <div class="privacy">🔒 Файлы обрабатываются прямо на этом устройстве и никуда не отправляются.</div>
+  <section class="box">
+    <h2><span>1</span>Выгрузки</h2>
+    <label class="btn"><input id="pick" type="file" multiple accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12">📂 Выбрать файлы</label>
+    <div id="files"></div>
+    <div class="row"><button class="ghost" id="clear" type="button">Очистить список</button></div>
+  </section>
+  <section class="box" id="step2" hidden>
+    <h2><span>2</span>Что анализируем</h2>
+    <div class="seg2" role="tablist"><button type="button" data-m="store" class="on">Магазин</button><button type="button" data-m="region">Регион</button></div>
+    <div id="storeBox">
+      <div class="code-row"><input id="code" list="codes" placeholder="A103" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button id="go" type="button">Анализ</button></div>
+      <datalist id="codes"></datalist>
+      <p class="muted">Можно ввести «а103», «103» или часть названия города / ТЦ.</p>
+    </div>
+    <div id="regionBox" hidden>
+      <div class="code-row"><select id="region"></select><button id="goR" type="button">Анализ</button></div>
+      <p class="muted">Весь регион или отдельный ASM — показатели, сравнение и рейтинг магазинов (без продавцов).</p>
+    </div>
+    <div id="choices"></div>
+    <div class="row"><button class="ghost" id="plansBtn2" type="button">🎯 Планы</button></div>
+  </section>
+</div>
+<div id="report" hidden></div>
+<nav id="bar" hidden><button class="ghost" id="back" type="button">← Назад</button><button class="ghost" id="plansBtn" type="button">🎯 Планы</button><button class="ghost" id="save" type="button">⬇ Файл</button><button id="share" type="button">↗ Отправить</button></nav>
+<dialog id="plansDlg"><div class="dlg-h"><h2 id="plansTitle">Планы</h2><button class="ghost x" id="plansClose" type="button" aria-label="Закрыть">✕</button></div>
+  <div id="plansObj"></div>
+  <div class="seg2 small" id="plansPer"><button type="button" data-p="month" class="on">Месяц</button><button type="button" data-p="week">Неделя</button><button type="button" data-p="day">День</button></div>
+  <form id="plansForm"></form>
+  <label class="chk"><input type="checkbox" id="incDay"> Выгрузка включает день выгрузки <small>(влияет на план на дату)</small></label>
+  <div class="row"><button class="ghost" id="plansDerive" type="button">Неделя и день из месяца</button><button class="ghost" id="plansClear" type="button">Очистить</button></div>
+  <button id="plansSave" type="button" style="width:100%;margin-top:10px">Сохранить и пересчитать</button>
+  <p class="muted">Планы хранятся только на этом устройстве. Пустое поле — план не задан.</p>
+</dialog>
+<dialog id="normsDlg"><h2>Нормы</h2><p class="muted">Хранятся только на этом устройстве.</p><form id="normsForm"></form><button class="ghost" id="normsClose" type="button" style="width:100%;margin-top:8px">Закрыть</button></dialog>
+<div id="busy" hidden></div><div id="toast" hidden></div>
+<script src="js/xlsx.js"></script>
+<script src="js/loader.js"></script>
+<script src="js/analysis.js"></script>
+<script src="js/report.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
