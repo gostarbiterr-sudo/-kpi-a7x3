@@ -683,6 +683,81 @@
     return q ? all.filter((r) => rkey(r.name).includes(q)) : [];
   }
 
+  // ---------------------------------------------------------------- план на день для продавцов
+  /* Логика:
+     1) Розница (то, на что влияют продавцы) = оборот × (1 − доля Е-ком − доля B2B). Доли берутся из KPI месяца.
+     2) Если задан план месяца по обороту: розничный план месяца = план × тот же коэффициент; остаток = розничный план − розничный факт;
+        план дня магазина = остаток / оставшиеся дни. Без плана — обычная выработка смены (сколько продавцы делают за смену).
+     3) Услуги — по чистой доле услуг (ЧДУ, без Е-ком и B2B): цель = ЧДУ из плана или норма; догоняем отставание за оставшиеся дни.
+     4) Аксессуары — цель по доле АКС (из плана: доля или оборот АКС / оборот; иначе текущая доля магазина); тоже с догоном.
+     5) План дня магазина делится между продавцами на смене пропорционально их выработке за смену (средний чек × чеки в смену). */
+  function dayPlan(loaded, code, norms, planMonth, opts, Pm, Pd) {
+    const out = { ok: false, notes: [] };
+    const row = Pm && Pm.row;
+    if (!row) { out.reason = "Нет KPI месяца по этому магазину — план дня считать не от чего."; return out; }
+    const staff = (loaded.emp.month || []).filter((r) => r.store_code === code && isn(r.revenue) && r.revenue > 0);
+    if (!staff.length) { out.reason = "Нет данных по продавцам этого магазина за месяц (вкладка «Сотрудники»)."; return out; }
+    const date = Pm.date_kpi;
+    const pr = progress("month", date, (opts || {}).includeDay);
+    const remDays = pr.total - pr.elapsed;
+    const ecom = val(row, "ecom") || 0, b2b = val(row, "b2b") || 0;
+    const f = Math.min(1, Math.max(0.3, 1 - ecom / 100 - b2b / 100));
+    const rev = val(row, "revenue"), factRetail = rev * f;
+    const accSh = val(row, "acc_sh"), chdu = val(row, "chdu");
+    const pm = planMonth || {};
+    // плановая дата: день после последнего дня в выгрузке
+    let planDate = null;
+    if (date) { planDate = new Date(date.getTime()); if ((opts || {}).includeDay !== false) planDate.setUTCDate(planDate.getUTCDate() + 1); }
+    // выработка продавцов за смену
+    const sellers = staff.map((r) => {
+      const avg = val(r, "avg"), cps = val(r, "cps");
+      const shifts = avg && cps ? r.revenue / avg / cps : null;
+      const cap = avg && cps ? avg * cps : null;
+      const dayRow = (loaded.emp.day || []).find((d) => d.store_code === code && d.name === r.name);
+      return { name: r.name, revenue: r.revenue, avg, cps, shifts: shifts ? Math.round(shifts * 10) / 10 : null, cap,
+        accSh: val(r, "acc_sh"), srvSh: val(r, "srv_sh"), compl: val(r, "compl"), att: val(r, "att"),
+        day: dayRow ? { revenue: val(dayRow, "revenue"), acc: val(dayRow, "acc_rev"), srv: val(dayRow, "srv_rev") } : null };
+    }).sort((a, b) => b.revenue - a.revenue);
+    const capKnown = sellers.filter((s) => s.cap);
+    const medCap = capKnown.length ? median(capKnown.map((s) => s.cap)) : null;
+    sellers.forEach((s) => { if (!s.cap) { s.cap = medCap || (factRetail / Math.max(1, pr.elapsed)) / sellers.length; s.capGuess = true; } });
+
+    // ---- оборот (розница)
+    const st = { ecom, b2b, f, rev, factRetail, elapsed: pr.elapsed, total: pr.total, remDays };
+    if (isn(pm.revenue) && pm.revenue > 0) {
+      st.planRev = pm.revenue; st.planRetail = pm.revenue * f;
+      st.remRetail = st.planRetail - factRetail;
+      st.R = remDays > 0 ? Math.max(0, st.remRetail) / remDays : 0;
+      st.mode = "plan";
+      if (st.remRetail <= 0) out.notes.push("Розничный план месяца уже выполнен — план дня равен обычной выработке смены.");
+    } else {
+      st.mode = "capacity";
+      out.notes.push("План месяца по обороту не задан — план дня = обычная выработка продавцов за смену. Задайте план (кнопка «Планы»), чтобы считать от остатка плана.");
+    }
+    if (remDays <= 0) out.notes.push("По данным выгрузки месяц закончился — оставшихся дней нет.");
+
+    // ---- услуги по ЧДУ
+    const tS = isn(pm.chdu) && pm.chdu > 0 ? pm.chdu : norms.chdu_min;
+    st.tS = tS; st.tSsrc = isn(pm.chdu) && pm.chdu > 0 ? "план" : "норма";
+    st.chdu = chdu;
+    st.srvRetailFact = chdu != null ? (chdu / 100) * factRetail : null;
+    if (st.planRetail && st.srvRetailFact != null && remDays > 0) st.Scatch = Math.max(0, (tS / 100) * st.planRetail - st.srvRetailFact) / remDays;
+    // ---- аксессуары по доле АКС
+    let tA = null, tAsrc = "";
+    if (isn(pm.acc_sh) && pm.acc_sh > 0) { tA = pm.acc_sh; tAsrc = "план"; }
+    else if (isn(pm.acc_rev) && pm.acc_rev > 0 && isn(pm.revenue) && pm.revenue > 0) { tA = (pm.acc_rev / pm.revenue) * 100; tAsrc = "план"; }
+    else if (accSh != null) { tA = accSh; tAsrc = "текущая доля магазина"; }
+    st.tA = tA; st.tAsrc = tAsrc; st.accSh = accSh;
+    if (tA != null && st.planRetail && accSh != null && remDays > 0) st.Acatch = Math.max(0, (tA / 100) * st.planRetail - (accSh / 100) * factRetail) / remDays;
+    out.ok = true;
+    out.store = st;
+    out.sellers = sellers;
+    out.planDate = planDate ? planDate.toISOString().slice(0, 10) : null;
+    out.norms = { srv_emp_min: norms.srv_emp_min, compl_emp_min: norms.compl_emp_min };
+    out.code = code;
+    return out;
+  }
+
   // ---------------------------------------------------------------- общий план
   function buildPlan(periods) {
     const groups = new Map();
@@ -719,9 +794,10 @@
     const pl = (plans || {})[planKey({ type: "store", code })] || {};
     const periods = {};
     for (const p of PERIODS) periods[p] = analyzePeriod(loaded, code, p, norms, pl[p], opts);
-    return { type: "store", code, info: storeLabel(loaded, code), periods, plan: buildPlan(periods), files: loaded.files, warnings: loaded.warnings.slice(), norms };
+    const dp = dayPlan(loaded, code, norms, pl.month, opts, periods.month, periods.day);
+    return { type: "store", code, info: storeLabel(loaded, code), periods, plan: buildPlan(periods), files: loaded.files, warnings: loaded.warnings.slice(), norms, dayPlan: dp };
   }
 
   KPI.analysis = { DEFAULT_NORMS, fmt, isn, TERM, PRIO, GROUP_NAME, findStore, storeLabel, liveCodes, analyze,
-    PLAN_METRICS, planKey, progress, planFact, regionList, findRegion, analyzeRegion, aggregate };
+    PLAN_METRICS, planKey, progress, planFact, regionList, findRegion, analyzeRegion, aggregate, dayPlan };
 })(typeof globalThis !== "undefined" ? globalThis : this);

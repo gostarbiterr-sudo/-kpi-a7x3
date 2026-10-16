@@ -387,6 +387,32 @@
       `<div class="wide-only"><div class="tw"><table class="mt sticky1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div><div class="narrow-only">${cards}</div></section>`;
   }
 
+  // ---------------------------------------------------------------- «План дня»
+  function dayPlanBlock(res) {
+    const D = res.dayPlan;
+    if (!D) return "";
+    if (!D.ok) return `<p class="muted">${esc(D.reason || "Нет данных для плана дня.")}</p>`;
+    const S = D.store;
+    const pd = D.planDate ? D.planDate.split("-").reverse().join(".") : "—";
+    const L = [];
+    L.push(`<div class="dpl"><span>Оборот магазина за месяц (на дату)</span><b>${money(S.rev)}</b></div>`);
+    L.push(`<div class="dpl"><span>Минус интернет-заказы (Е-ком ${fmt(S.ecom, 1)}%) и B2B (${fmt(S.b2b, 1)}%)</span><b>розница ${money(S.factRetail)}</b></div>`);
+    if (S.mode === "plan") {
+      L.push(`<div class="dpl"><span>План месяца ${money(S.planRev)} → розничная часть</span><b>${money(S.planRetail)}</b></div>`);
+      L.push(`<div class="dpl"><span>Выполнено розницы</span><b>${fmt((S.factRetail / S.planRetail) * 100, 0)}%</b></div>`);
+      L.push(`<div class="dpl hl"><span>Осталось ${money(Math.max(0, S.remRetail))} на ${S.remDays} дн.</span><b>${money(S.R)} в день</b></div>`);
+    }
+    L.push(`<div class="dpl"><span>Услуги: цель ЧДУ (${esc(S.tSsrc)})</span><b>${fmt(S.tS, 1)}% · сейчас ${fmt(S.chdu, 1)}%</b></div>`);
+    if (S.tA != null) L.push(`<div class="dpl"><span>Аксессуары: цель доли АКС (${esc(S.tAsrc)})</span><b>${fmt(S.tA, 1)}% · сейчас ${fmt(S.accSh, 1)}%</b></div>`);
+    const chips = D.sellers.map((x, i) => `<label class="dpc"><input type="checkbox" data-i="${i}" checked><span>${esc(x.name)}</span></label>`).join("");
+    const json = JSON.stringify(D).replace(/</g, "\\u003c");
+    return `<section class="panel"><h3>План на ${pd}</h3><p class="muted">Считается только розница — то, на что влияют продавцы: интернет-заказы и B2B вычитаются, услуги — по чистой доле услуг (ЧДУ).</p>${L.join("")}` +
+      D.notes.map((n) => `<p class="warn-s">ℹ ${esc(n)}</p>`).join("") + `</section>` +
+      `<section class="panel dp"><h3>Кто сегодня на смене</h3><p class="muted">Снимите галочки с тех, кого нет, — план пересчитается между остальными.</p><div class="dpcs">${chips}</div>` +
+      `<script type="application/json" class="dp-json">${json}</script><div class="dp-out"></div></section>` +
+      '<p class="muted">План делится пропорционально обычной выработке продавца за смену (средний чек × чеки в смену за месяц). Аксессуары и услуги — в той же доле от оборота, с догоном отставания магазина.</p>';
+  }
+
   // ---------------------------------------------------------------- «План»
   function planBlock(res) {
     const plan = res.plan;
@@ -423,7 +449,7 @@
     const stamp = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const body = `<div class="rep" data-period="${def}">
 <header class="top"><div class="ttl"><h1>${esc(title)}</h1><p>${meta}</p><p class="muted">Выгрузки: ${esc(dates.join(", ") || "—")} · отчёт ${stamp}</p></div></header>
-<nav class="tabs"><button class="tb on" data-t="main">Главное</button><button class="tb" data-t="store">${region ? "Показатели" : "Магазин"}</button><button class="tb" data-t="staff">${region ? "Магазины" : "Продавцы"}</button><button class="tb" data-t="prof">Проф. анализ</button><button class="tb" data-t="plan">План</button></nav>
+<nav class="tabs"><button class="tb on" data-t="main">Главное</button><button class="tb" data-t="store">${region ? "Показатели" : "Магазин"}</button><button class="tb" data-t="staff">${region ? "Магазины" : "Продавцы"}</button><button class="tb" data-t="prof">Проф. анализ</button>${region ? "" : '<button class="tb" data-t="day">План дня</button>'}<button class="tb" data-t="plan">План</button></nav>
 <main>
 <section class="tab on" data-tab="main">${warn}<h2>Выполнение норм ${region ? "региона" : "магазина"}</h2>${scoreTiles(res)}
 <div class="two wide-left"><section class="panel"><h3>Светофор по периодам</h3>${normGrid(res)}</section><section class="panel"><h3>${region ? "Магазины: выполнение норм" : "Продавцы: выполнение норм"}</h3>${region ? storesOverview(res) : staffOverview(res, norms)}</section></div>
@@ -431,6 +457,7 @@
 <section class="tab" data-tab="store"><div class="perbar"><span>Период:</span>${pbuttons()}</div>${per(storeTable)}</section>
 <section class="tab" data-tab="staff"><div class="perbar"><span>Период:</span>${pbuttons()}</div>${per((P) => (region ? storesBlock(P, res) : staffBlock(P, norms)))}</section>
 <section class="tab" data-tab="prof"><div class="perbar"><span>Период:</span>${pbuttons()}</div>${per((P) => profBlock(P, norms, res))}</section>
+${region ? "" : `<section class="tab" data-tab="day"><h2>План на день для продавцов</h2>${dayPlanBlock(res)}</section>`}
 <section class="tab" data-tab="plan"><h2>План действий</h2><p class="muted">Собран по всем трём периодам. «Системная» — повторяется и в дне, и в неделе, и в месяце: решать в первую очередь.</p>${planBlock(res)}</section>
 </main><div class="tipbox" role="tooltip"></div></div>`;
     return { body, css: CSS, title: region ? `${res.name} — анализ региона` : `Магазин ${code} — анализ` };
@@ -449,6 +476,49 @@
       rep.querySelectorAll(".fb").forEach((x) => x.classList.toggle("on", x === f));
       rep.querySelectorAll(".act").forEach((a) => (a.style.display = f.dataset.f === "all" || a.dataset.kind === f.dataset.f ? "" : "none"));
     }));
+    // ---- план дня: распределение по продавцам на смене
+    rep.querySelectorAll(".dp").forEach((box) => {
+      const D = JSON.parse(box.querySelector(".dp-json").textContent);
+      const nf = (v, d) => (v == null || !isFinite(v) ? "—" : Number(v).toLocaleString("ru-RU", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }));
+      const rub = (v) => nf(v, 0) + " ₽";
+      const key = "kpi_shift_" + D.code + "_" + (D.planDate || "");
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { saved = null; }
+      const boxes = [...box.querySelectorAll(".dpc input")];
+      if (saved) boxes.forEach((b) => (b.checked = saved.includes(D.sellers[+b.dataset.i].name)));
+      const render = () => {
+        const on = boxes.filter((b) => b.checked).map((b) => D.sellers[+b.dataset.i]);
+        try { localStorage.setItem(key, JSON.stringify(on.map((x) => x.name))); } catch (e) { /* нет хранилища */ }
+        const outEl = box.querySelector(".dp-out");
+        if (!on.length) { outEl.innerHTML = '<p class="muted">Отметьте хотя бы одного продавца.</p>'; return; }
+        const S = D.store, capSum = on.reduce((a, x) => a + x.cap, 0);
+        const R = S.mode === "plan" && S.remRetail > 0 && S.remDays > 0 ? S.R : capSum;
+        const A = Math.max(S.Acatch || 0, S.tA != null ? (R * S.tA) / 100 : 0);
+        const Sv = Math.max(S.Scatch || 0, (R * S.tS) / 100);
+        const stretch = capSum ? (R / capSum - 1) * 100 : 0;
+        const aSh = R ? (A / R) * 100 : 0, sSh = R ? (Sv / R) * 100 : 0;
+        let h = `<div class="dps"><div><small>Оборот смены</small><b>${rub(R)}</b></div><div><small>Аксессуары</small><b>${rub(A)}</b><span>${nf(aSh, 1)}% оборота</span></div>` +
+          `<div><small>Услуги</small><b>${rub(Sv)}</b><span>${nf(sSh, 1)}% (ЧДУ)</span></div></div>`;
+        if (S.mode === "plan" && S.remRetail > 0) h += stretch > 3
+          ? `<p class="dpw bad">Чтобы выполнить месяц, смене нужно сделать на <b>${nf(stretch, 0)}%</b> больше обычной выработки (обычно ${rub(capSum)}).</p>`
+          : `<p class="dpw good">План дня в пределах обычной выработки смены (${rub(capSum)}).</p>`;
+        h += on.map((x) => {
+          const r = capSum ? (R * x.cap) / capSum : 0, a = R ? (A * r) / R : 0, sv = R ? (Sv * r) / R : 0;
+          const up = x.cap ? (r / x.cap - 1) * 100 : 0;
+          const chk = x.avg ? r / x.avg : null;
+          const accGap = x.accSh != null && aSh > x.accSh + 0.5, srvGap = x.srvSh != null && sSh > x.srvSh + 0.5;
+          const dayTxt = x.day && x.day.revenue != null ? `<p class="dpd">Последний день в выгрузке: ${rub(x.day.revenue)} (${nf(r ? (x.day.revenue / r) * 100 : null, 0)}% от плана), АКС ${rub(x.day.acc)}, услуги ${rub(x.day.srv)}</p>` : "";
+          return `<article class="empcard ${up > 10 || accGap || srvGap ? "warn" : "good"}"><div class="ech"><b>${x.name.replace(/</g, "&lt;")}</b><span class="muted">обычно ${rub(x.cap)} за смену${x.capGuess ? " (оценка)" : ""}</span></div>` +
+            `<div class="ecg"><div class="ec"><small>Оборот</small><b>${rub(r)}</b><span class="${up > 3 ? "neg" : "pos"}">${up >= 0 ? "+" : ""}${nf(up, 0)}% к обычному</span></div>` +
+            `<div class="ec"><small>Чеков ≈</small><b>${nf(chk, 0)}</b><span>обычно ${nf(x.cps, 1)} за смену</span></div>` +
+            `<div class="ec ${accGap ? "c-warn" : ""}"><small>Аксессуары</small><b>${rub(a)}</b><span>нужно ${nf(aSh, 1)}% · у него ${nf(x.accSh, 1)}%</span></div>` +
+            `<div class="ec ${srvGap ? "c-warn" : ""}"><small>Услуги</small><b>${rub(sv)}</b><span>нужно ${nf(sSh, 1)}% · у него ${nf(x.srvSh, 1)}%</span></div></div>${dayTxt}</article>`;
+        }).join("");
+        outEl.innerHTML = h;
+      };
+      boxes.forEach((b) => b.addEventListener("change", render));
+      render();
+    });
     const tipEl = rep.querySelector(".tipbox");
     const show = (el, x, y) => { tipEl.textContent = el.dataset.tip; tipEl.style.display = "block"; tipEl.style.left = Math.max(8, Math.min(x + 12, innerWidth - 300)) + "px"; tipEl.style.top = y + 14 + "px"; };
     rep.addEventListener("mousemove", (e) => { const el = e.target.closest("[data-tip]"); if (el) show(el, e.clientX, e.clientY); else tipEl.style.display = "none"; });
@@ -552,6 +622,14 @@ td.todo{text-align:left;min-width:280px;color:var(--text2);font-size:12.5px}
 .pfl{display:flex;flex-direction:column;gap:14px;margin-top:8px}.pfr small{color:var(--text2);font-size:12px}.pfn{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .pfr .pbar.sm{margin-top:18px}.planhint{background:var(--infobg);border-color:transparent;font-size:13.5px}
 .sub{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+.dpl{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13.5px}.dpl span{color:var(--text2)}.dpl b{white-space:nowrap;text-align:right}
+.dpl.hl{background:var(--infobg);border-radius:8px;padding:9px 10px;border:0;margin-top:6px}.warn-s{font-size:12.5px;color:var(--text2);margin-top:8px}
+.dpcs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}.dpc{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:18px;padding:6px 12px;font-size:13px;cursor:pointer;background:var(--surface)}
+.dpc input{accent-color:var(--accent)}.dps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 10px}.dps>div{background:var(--infobg);border-radius:10px;padding:8px 10px}
+.dps small{display:block;color:var(--text2);font-size:11.5px}.dps b{display:block;font-size:17px}.dps span{font-size:11.5px;color:var(--text2)}
+.dpw{border-radius:10px;padding:8px 12px;font-size:13px;margin:6px 0 4px}.dpw.bad{background:var(--badbg)}.dpw.good{background:var(--goodbg)}
+.ec span{display:block;font-size:11.5px;color:var(--text2)}.ec span.neg{color:var(--bad)}.ec span.pos{color:var(--good)}.dpd{font-size:12px;color:var(--text2);margin-top:4px}
+@media (max-width:700px){.dps b{font-size:15px}}
 .banner{background:var(--warnbg);border-radius:10px;padding:10px 14px;margin:12px 0}
 .tipbox{position:fixed;pointer-events:none;background:var(--text);color:var(--surface);padding:6px 10px;border-radius:8px;font-size:12.5px;max-width:290px;display:none;z-index:20}
 @media (max-width:1000px){.two,.two.wide-left,.three{grid-template-columns:1fr}}

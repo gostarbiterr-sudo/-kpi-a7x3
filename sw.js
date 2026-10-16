@@ -1,5 +1,5 @@
 /* Офлайн-кэш приложения. Сами файлы с выгрузками сюда не попадают — только код приложения. */
-const VERSION = "kpi-v2";
+const VERSION = "kpi-v3";
 const FILES = ["./", "index.html", "manifest.webmanifest", "js/xlsx.js", "js/loader.js", "js/analysis.js", "js/report.js", "js/app.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });

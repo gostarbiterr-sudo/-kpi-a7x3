@@ -109,7 +109,7 @@
     const [n, i, found] = bestHeader(rows, KPI_COLS);
     if (i == null || n < 8 || !("store" in found) || !("revenue" in found)) return null;
     let recs = [];
-    const subs = [];                     // итоговые строки: «Запад», строки ASM
+    const subs = [];                     // итоговые строки: итог региона, строки ASM
     const metricRec = (row, extra) => {
       const rec = Object.assign({}, extra);
       for (const cid of Object.keys(found)) {
@@ -146,7 +146,7 @@
     recs = recs.filter((r) => (seen.has(r.code) ? false : (seen.add(r.code), true)));
     const notes = [];
     fixLevels(recs.concat(subs), found, pctCols, KPI_LEVEL_PCT, notes);
-    // уровень итоговой строки: имя совпадает с ASM магазинов -> «asm», иначе -> «total» (весь файл, например «Запад»)
+    // уровень итоговой строки: имя совпадает с ASM магазинов -> «asm», иначе -> «total» (весь файл — итог региона)
     const asmKeys = new Set(recs.map((r) => key(r.asm || "")).filter(Boolean));
     const regions = [], seenR = new Set();
     for (const r of subs) {
