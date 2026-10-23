@@ -152,20 +152,46 @@
     const name = `otchet_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
     return new File([html], name, { type: "text/html" });
   }
-  function save() {
-    const f = reportFile();
+  function save() { download(reportFile()); }
+  // ---- отправка картинкой: картинку готовим заранее, чтобы нажатие «Отправить» сразу открывало меню (иначе iOS теряет жест)
+  let shPer = "month", shKind = "store", shImg = null, shUrl = null, shSeq = 0;
+  function openShare() {
+    const rep = document.querySelector("#report .rep");
+    shPer = (rep && rep.dataset.period) || "month";
+    if (result.type === "region") shKind = "store";
+    const kb = document.querySelectorAll("#shKind button");
+    kb[0].textContent = result.type === "region" ? "Регион — главное" : "Магазин — главное";
+    kb[1].hidden = result.type === "region";
+    renderShare();
+    $("#shareDlg").showModal();
+  }
+  async function renderShare() {
+    document.querySelectorAll("#shPer button").forEach((b) => b.classList.toggle("on", b.dataset.p === shPer));
+    document.querySelectorAll("#shKind button").forEach((b) => b.classList.toggle("on", b.dataset.k === shKind));
+    const seq = ++shSeq;
+    shImg = null; $("#shSend").disabled = $("#shSave").disabled = true;
+    try {
+      const img = await KPI.share.makeImage(result, shPer, shKind === "staff" ? "staff" : result.type === "region" ? "region" : "store");
+      if (seq !== shSeq) return;
+      shImg = img;
+      if (shUrl) URL.revokeObjectURL(shUrl);
+      shUrl = URL.createObjectURL(img.blob);
+      $("#shPrev").src = shUrl;
+      $("#shSend").disabled = $("#shSave").disabled = false;
+    } catch (e) { toast("Не удалось нарисовать картинку: " + (e.message || e)); console.error(e); }
+  }
+  function download(file) {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(f);
-    a.download = f.name;
-    document.body.appendChild(a);
-    a.click();
+    a.href = URL.createObjectURL(file); a.download = file.name;
+    document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
-  async function share() {
-    const f = reportFile();
+  function sendImage() {
+    if (!shImg) return;
+    const f = shImg.file;
     if (navigator.canShare && navigator.canShare({ files: [f] })) {
-      try { await navigator.share({ files: [f], title: `Анализ ${result.code}` }); } catch (e) { /* отменено */ }
-    } else { save(); toast("Отправка недоступна в этом браузере — файл сохранён"); }
+      navigator.share({ files: [f] }).catch(() => {});
+    } else { download(f); toast("Отправка из браузера недоступна — картинка сохранена, приложите её в мессенджере"); }
   }
 
   // ---------------------------------------------------------------- планы
@@ -267,7 +293,12 @@
     $("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
     $("#back").onclick = () => history.back();
     $("#save").onclick = save;
-    $("#share").onclick = share;
+    $("#share").onclick = openShare;
+    document.querySelectorAll("#shPer button").forEach((b) => (b.onclick = () => { shPer = b.dataset.p; renderShare(); }));
+    document.querySelectorAll("#shKind button").forEach((b) => (b.onclick = () => { shKind = b.dataset.k; renderShare(); }));
+    $("#shSend").onclick = sendImage;
+    $("#shSave").onclick = () => shImg && download(shImg.file);
+    $("#shClose").onclick = () => $("#shareDlg").close();
     $("#plansBtn").onclick = () => openPlans(current);
     $("#plansBtn2").onclick = () => openPlans(pendingObj());
     document.querySelectorAll("#plansPer button").forEach((b) => (b.onclick = () => { collect(); planPer = b.dataset.p; renderPlanForm(); }));
