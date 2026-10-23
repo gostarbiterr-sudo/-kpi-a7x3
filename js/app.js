@@ -47,6 +47,8 @@
     document.querySelectorAll("#step2 .seg2 button").forEach((b) => b.classList.toggle("on", b.dataset.m === m));
     $("#storeBox").hidden = m !== "store";
     $("#regionBox").hidden = m !== "region";
+    $("#contestBox").hidden = m !== "contest";
+    $("#plansRow").hidden = m === "contest";
     $("#choices").innerHTML = "";
   }
   function renderSetup() {
@@ -66,11 +68,23 @@
       `<div class="flist">${files.map((f) => `<div class="fi"><span class="fn">${esc(f.name)}</span><span class="fs">${Math.round(f.size / 1024)} КБ</span></div>`).join("")}</div>` +
       (loaded ? `<div class="sum"><div><b>KPI магазинов</b>${P.map((p) => chip(loaded.kpi[p], R[p] + dlab("kpi|" + p))).join("")}</div>` +
         `<div><b>Сотрудники</b>${P.map((p) => chip(loaded.emp[p], R[p] + dlab("emp|" + p))).join("")}</div>` +
-        `<p class="muted">Работающих магазинов: <b>${nStores}</b> · регионов: <b>${regions.length}</b></p></div>` +
+        (nStores ? `<p class="muted">Работающих магазинов: <b>${nStores}</b> · регионов: <b>${regions.length}</b></p>` : "") +
+        (loaded.contest ? `<p class="muted">Конкурс 1P: магазинов <b>${loaded.contest.stores.length}</b> · выгрузка ${loader.ru(loaded.contest.exp)}</p>` : "") + `</div>` +
         loaded.warnings.map((w) => `<p class="warn">⚠ ${esc(w)}</p>`).join("") +
         `<details><summary>Что прочитано из файлов</summary><div class="rd">${loaded.files.map((r) =>
           `<div class="rdi ${r.comment.startsWith("используется") ? "used" : ""}"><b>${esc(r.file)}</b> · ${esc(r.sheet)}<br><small>${esc(r.kind)}${r.period !== "—" ? " · " + esc(r.period) : ""}${r.date ? " · " + esc(r.date) : ""} — ${esc(r.comment)}</small></div>`).join("")}</div></details>` : "");
-    $("#step2").hidden = !loaded || nStores === 0;
+    const hasC = !!(loaded && loaded.contest);
+    $("#step2").hidden = !loaded || (nStores === 0 && !hasC);
+    document.querySelector('#step2 .seg2 button[data-m="store"]').hidden = nStores === 0;
+    document.querySelector('#step2 .seg2 button[data-m="region"]').hidden = nStores === 0;
+    document.querySelector('#step2 .seg2 button[data-m="contest"]').hidden = !hasC;
+    if (hasC) {
+      const lastC = store.get("kpi_last_clevel", "");
+      $("#cLevel").innerHTML = KPI.contest.levels(loaded.contest).map((l) => { const v = l.level + "|" + l.name; return `<option value="${esc(v)}"${v === lastC ? " selected" : ""}>${esc(l.label)}</option>`; }).join("");
+      $("#cCodes").innerHTML = loaded.contest.stores.map((x) => `<option value="${esc(x.code)}">`).join("");
+    }
+    if (mode === "contest" && !hasC) mode = "store";
+    if (mode !== "contest" && nStores === 0 && hasC) mode = "contest";
     $("#codes").innerHTML = loaded ? [...analysis.liveCodes(loaded)].sort().map((c) => `<option value="${esc(c)}">`).join("") : "";
     const sel = $("#region"), lastR = store.get("kpi_last_region", "");
     sel.innerHTML = regions.map((r) => `<option value="${esc(r.name)}"${r.name === lastR ? " selected" : ""}>${esc(r.level === "total" ? `${r.name} — весь регион` : `${r.name} (ASM)`)}</option>`).join("");
@@ -85,6 +99,7 @@
   const planOpts = () => ({ includeDay: store.get("kpi_inc_day", true) });
 
   function compute(obj) {
+    if (obj.type === "contest") return KPI.contest.analyze(loaded.contest, obj.sel);
     return obj.type === "store" ? analysis.analyze(loaded, obj.code, norms(), plans(), planOpts())
       : analysis.analyzeRegion(loaded, obj.name, norms(), plans(), planOpts());
   }
@@ -118,6 +133,27 @@
     store.set("kpi_last_region", name);
     open({ type: "region", name });
   }
+  function runContest(useCode, codeArg) {
+    if (!loaded || !loaded.contest) return;
+    const box = $("#choices"); box.innerHTML = "";
+    if (useCode) {
+      const q = (codeArg || $("#cCode").value).trim();
+      if (!q) { toast("Впишите код магазина"); return; }
+      const found = KPI.contest.findStore(loaded.contest, q);
+      if (!found.length) { box.innerHTML = `<p class="warn">Магазин «${esc(q)}» не найден в файле конкурса.</p>`; return; }
+      if (found.length > 1 && !codeArg) {
+        box.innerHTML = '<p class="muted">Найдено несколько магазинов — выберите:</p>' + found.slice(0, 40).map((c) => `<button class="choice" data-c="${esc(c)}"><b>${esc(c)}</b></button>`).join("");
+        box.querySelectorAll(".choice").forEach((b) => (b.onclick = () => runContest(true, b.dataset.c)));
+        return;
+      }
+      $("#cCode").value = found[0];
+      open({ type: "contest", sel: { level: "store", code: found[0] } });
+      return;
+    }
+    const v = $("#cLevel").value, i = v.indexOf("|");
+    store.set("kpi_last_clevel", v);
+    open({ type: "contest", sel: { level: v.slice(0, i), name: v.slice(i + 1) } });
+  }
   function open(obj) {
     try { result = compute(obj); } catch (e) { toast("Ошибка анализа: " + (e.message || e)); console.error(e); return; }
     current = obj;
@@ -133,6 +169,7 @@
     $("#setup").hidden = true;
     host.hidden = false;
     $("#bar").hidden = false;
+    $("#plansBtn").hidden = result.type === "contest";
     window.scrollTo(0, 0);
     if (push) history.pushState({ report: 1 }, "");
   }
@@ -149,7 +186,7 @@
     const html = report.standalone(result);
     const d = new Date();
     const id = String(result.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
-    const name = `otchet_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
+    const name = `${result.type === "contest" ? "konkurs_1P" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
     return new File([html], name, { type: "text/html" });
   }
   function save() { download(reportFile()); }
@@ -157,19 +194,34 @@
   let shPer = "month", shKind = "store", shImg = null, shUrl = null, shSeq = 0;
   function openShare() {
     const rep = document.querySelector("#report .rep");
-    shPer = (rep && rep.dataset.period) || "month";
-    const reg = result.type === "region";
-    if (shKind !== "store") shKind = reg ? "stores" : "staff";
-    const kb = document.querySelectorAll("#shKind button");
-    kb[0].textContent = reg ? "Регион — главное" : "Магазин — главное";
-    kb[1].textContent = reg ? "Магазины — KPI" : "Продавцы — KPI";
-    kb[1].dataset.k = reg ? "stores" : "staff";
+    const pb = document.querySelectorAll("#shPer button"), kb = document.querySelectorAll("#shKind button");
+    if (result.type === "contest") {
+      shPer = (rep && rep.dataset.plan) || "p1";
+      ["p1", "p2", "p3"].forEach((p, i) => { pb[i].dataset.p = p; pb[i].textContent = `План ${i + 1}`; });
+      shKind = shKind === "clist" ? "clist" : "csum";
+      kb[0].dataset.k = "csum"; kb[0].textContent = "Сводка";
+      kb[1].dataset.k = "clist";
+      kb[1].textContent = { store: "Продавцы", asm: "Магазины", dsm: "ASM", company: "ASM" }[result.level];
+      kb[1].hidden = result.level === "store" && !result.sellers.length;
+      if (kb[1].hidden) shKind = "csum";
+    } else {
+      shPer = (rep && rep.dataset.period) || "month";
+      [["month", "Месяц"], ["week", "Неделя"], ["day", "День"]].forEach(([p, t], i) => { pb[i].dataset.p = p; pb[i].textContent = t; });
+      const reg = result.type === "region";
+      if (shKind !== "store") shKind = reg ? "stores" : "staff";
+      kb[0].dataset.k = "store";
+      kb[0].textContent = reg ? "Регион — главное" : "Магазин — главное";
+      kb[1].textContent = reg ? "Магазины — KPI" : "Продавцы — KPI";
+      kb[1].dataset.k = reg ? "stores" : "staff";
+      kb[1].hidden = false;
+    }
     renderShare();
     $("#shareDlg").showModal();
   }
   async function renderShare() {
     document.querySelectorAll("#shPer button").forEach((b) => b.classList.toggle("on", b.dataset.p === shPer));
     document.querySelectorAll("#shKind button").forEach((b) => b.classList.toggle("on", b.dataset.k === shKind));
+    $("#shPer").hidden = shKind === "csum";
     const seq = ++shSeq;
     shImg = null; $("#shSend").disabled = $("#shSave").disabled = true;
     try {
@@ -293,6 +345,9 @@
     document.querySelectorAll("#step2 .seg2 button").forEach((b) => (b.onclick = () => setMode(b.dataset.m)));
     $("#go").onclick = () => run();
     $("#goR").onclick = runRegion;
+    $("#goC").onclick = () => runContest(false);
+    $("#goCS").onclick = () => runContest(true);
+    $("#cCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runContest(true); });
     $("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
     $("#back").onclick = () => history.back();
     $("#save").onclick = save;

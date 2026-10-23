@@ -437,6 +437,7 @@
   // ---------------------------------------------------------------- сборка
   const pbuttons = () => SHOW.map((p) => `<button class="pb" data-p="${p}">${PERIOD_RU[p]}</button>`).join("");
   function build(res, opts) {
+    if (res.type === "contest") return KPI.contest.build(res, CSS);
     opts = opts || {};
     const norms = res.norms, info = res.info || {}, code = res.code;
     const region = res.type === "region";
@@ -476,6 +477,7 @@ ${region ? "" : `<section class="tab" data-tab="day"><h2>План на день 
       window.scrollTo(0, 0);
     }));
     rep.querySelectorAll(".pb").forEach((p) => (p.onclick = () => (rep.dataset.period = p.dataset.p)));
+    rep.querySelectorAll(".plb").forEach((p) => (p.onclick = () => (rep.dataset.plan = p.dataset.p)));
     rep.querySelectorAll(".fb").forEach((f) => (f.onclick = () => {
       rep.querySelectorAll(".fb").forEach((x) => x.classList.toggle("on", x === f));
       rep.querySelectorAll(".act").forEach((a) => (a.style.display = f.dataset.f === "all" || a.dataset.kind === f.dataset.f ? "" : "none"));

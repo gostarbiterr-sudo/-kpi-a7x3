@@ -237,7 +237,7 @@
   /* files: [{name, lastModified, buffer}] */
   async function loadFiles(files, progress) {
     const say = progress || (() => {});
-    const cands = [], info = [];
+    const cands = [], info = [], contests = [];
     const addInfo = (file, sheet, kind, period, region, d, rows, comment) =>
       info.push({ file, sheet, kind, period: PERIOD_RU[period] || "—", region, date: iso(d), rows, comment });
 
@@ -249,6 +249,11 @@
       let book;
       try { book = await KPI.xlsx.readWorkbook(f.buffer); }
       catch (e) { addInfo(base, "", "ошибка", null, "", null, 0, `не удалось открыть: ${e.message || e}`); continue; }
+      if (KPI.contest) {                 // выгрузка конкурса 1P — отдельный отчёт
+        let C = null;
+        try { C = await KPI.contest.parseBook(book, base, f.lastModified); } catch (e) { addInfo(base, "", "конкурс 1P", null, "", null, 0, `не удалось прочитать: ${e.message || e}`); continue; }
+        if (C) { contests.push(C); continue; }
+      }
       const nd = nameDate(base);
       const md = new Date(f.lastModified || Date.now());
       const d = nd || new Date(Date.UTC(md.getFullYear(), md.getMonth(), md.getDate()));
@@ -327,7 +332,13 @@
         .map((k) => { const [kind, p] = k.split("|"); return `${kind === "kpi" ? "KPI" : "сотрудники"} ${PERIOD_RU[p].toLowerCase()} — ${ru(byKey[k])}`; });
       res.warnings.push("Файлы выгружены в разные дни: " + parts.join("; ") + ". Проверьте, что загружены свежие выгрузки.");
     }
-    for (const p of PERIODS) {
+    // конкурс: берём самую свежую выгрузку
+    contests.sort((a, b) => b.exp - a.exp);
+    res.contest = contests[0] || null;
+    contests.forEach((C, i) => addInfo(C.file, "Магазины / Территория / Сотрудники", "Конкурс 1P", null, "", C.exp, C.stores.length,
+      i ? `не используется: есть более свежая выгрузка конкурса — ${contests[0].file}` : `используется. Магазинов: ${C.stores.length}, территорий: ${C.terrs.length}, продавцов: ${C.emps.length}.`));
+    const onlyContest = !Object.keys(res.kpi).length && !Object.keys(res.emp).length && res.contest;
+    if (!onlyContest) for (const p of PERIODS) {
       if (!res.kpi[p]) res.warnings.push(`Нет KPI-файла за период «${PERIOD_RU[p]}» — анализ магазина за этот период недоступен.`);
       if (!res.emp[p]) res.warnings.push(`Нет вкладки сотрудников за период «${PERIOD_RU[p]}» — анализ продавцов за этот период недоступен.`);
     }

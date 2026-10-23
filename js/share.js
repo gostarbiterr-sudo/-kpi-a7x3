@@ -344,19 +344,168 @@
     return c;
   }
 
+  // ---------------------------------------------------------------- конкурс 1P
+  const cdate = (d) => (d ? `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}` : "");
+  function contestSub(res) {
+    const Cc = res.C;
+    return `${Cc.start ? `${cdate(Cc.start)}–${cdate(Cc.end)}` : "конкурс"} · выгрузка ${cdate(Cc.exp)}${Cc.totalDays ? ` · осталось ${Cc.remDays} из ${Cc.totalDays} дн.` : ""}`;
+  }
+  const PLN = (k) => `План ${k + 1} · +${KPI.contest.RULES.growth[k]}%`;
+  const cst = (x) => (x.fc == null ? null : x.fc >= 100 ? "good" : x.fc >= 95 ? "warn" : "bad");
+  // сводка: все три плана
+  function contestSummaryCard(res) {
+    const W = 1080, PAD = 48, CH = 300;
+    const extra = res.level !== "store" && res.stores.length > 1;
+    const H = 168 + 40 + 70 + 3 * (CH + 20) + (extra ? 70 : 0) + 90;
+    const c = canvas(W, H), ctx = c.getContext("2d");
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    header(ctx, W, `Конкурс 1P · ${res.name}`, fit(ctx, contestSub(res), W - 96, 28));
+    let y = 168 + 40;
+    const r = res.reach;
+    badge(ctx, PAD, y, r ? (r >= 1 ? "good" : "warn") : "bad", 38);
+    text(ctx, fit(ctx, r ? `При текущем темпе выйдет план ${r}` : "При текущем темпе не выходит даже план 1", W - PAD * 2 - 60, 30, 700), PAD + 56, y + 30, 30, 700);
+    y += 70;
+    res.ms.forEach((x) => {
+      const st = cst(x) || "warn";
+      rr(ctx, PAD, y, W - PAD * 2, CH, 18, C.card);
+      ctx.fillStyle = stColor(st); ctx.fillRect(PAD, y + 14, 8, CH - 28);
+      const X = PAD + 32, RW = W - PAD * 2 - 64;
+      text(ctx, PLN(x.k), X, y + 46, 30, 700);
+      text(ctx, x.gap === 0 ? "выполнен ✓" : `прогноз ${fmt(x.fc, 0)}%`, X + RW, y + 46, 30, 700, stColor(st), "right");
+      text(ctx, money(x.fact), X, y + 104, 44, 700);
+      ctx.font = font(44, 700); const fw = ctx.measureText(money(x.fact)).width;
+      text(ctx, `из ${money(x.plan)} · ${fmt(x.pct, 1)}%`, X + fw + 16, y + 104, 26, 400, C.text2);
+      // полоса: факт, отметка — план на дату
+      const bw = RW, by = y + 128;
+      rr(ctx, X, by, bw, 18, 9, C.track);
+      rr(ctx, X, by, Math.max(10, Math.min(bw, (bw * (x.pct || 0)) / 100)), 18, 9, stColor(st));
+      const tx = X + Math.min(bw, (bw * (x.plan > 0 ? x.pd / x.plan : 0)));
+      ctx.fillStyle = C.text; ctx.fillRect(tx - 1, by - 8, 3, 34);
+      text(ctx, "план на сегодня", Math.min(Math.max(tx, X + 90), X + bw - 90), by + 50, 20, 400, C.muted, "center");
+      const cells = [["Не хватает", x.gap === 0 ? "—" : money(x.gap)], ["Нужно в день", x.gap === 0 ? "—" : money(x.perDay)],
+        [x.lag > 0 ? "Отстаём от плана на сегодня" : "Опережаем план на сегодня", money(x.lag == null ? null : Math.abs(x.lag))]];
+      const cw = RW / 3;
+      cells.forEach(([l, v], i) => { text(ctx, l, X + i * cw, y + 232, 22, 400, C.muted); text(ctx, fit(ctx, v, cw - 16, 32, 700), X + i * cw, y + 274, 32, 700, i === 0 && x.gap > 0 ? C.bad : C.text); });
+      y += CH + 20;
+    });
+    if (extra) {
+      const t = [0, 1, 2].map((k) => `план ${k + 1}: ${res.stores.filter((s) => s.ms[k].fc >= 100).length}`).join(" · ");
+      text(ctx, fit(ctx, `Магазинов на темпе (из ${res.stores.length}): ${t}`, W - PAD * 2, 27, 600), PAD, y + 36, 27, 600, C.text2);
+    }
+    footer(ctx, W, H - 28);
+    return c;
+  }
+  // таблица по выбранному плану: магазины ASM / ASM дивизиона / ASM компании / продавцы магазина
+  function contestListCard(res, k) {
+    if (res.level === "store") return contestSellersCard(res, k);
+    const PAD = 40, rowsAll = res.level === "asm" ? res.stores : res.level === "dsm" ? res.groups || [] : res.asms || [];
+    const what = res.level === "asm" ? "магазины" : "ASM";
+    const MAX = 120;
+    const rows = [...rowsAll].sort((a, b) => (a.ms[k].fc ?? 1e9) - (b.ms[k].fc ?? 1e9)).slice(0, MAX);
+    const withD = res.level === "company";
+    const cols = [["fact", "Факт", 170], ["plan", "План", 170], ["pct", "Выпол-|нено", 120], ["fc", "Прогноз", 130], ["gap", "Не|хватает", 170], ["perDay", "Нужно|в день", 160]];
+    const NAMEW = res.level === "asm" ? 200 : 330, DW = withD ? 150 : 0;
+    const W = PAD * 2 + 44 + NAMEW + DW + cols.reduce((a, c) => a + c[2], 0) + 16;
+    const RH = 58, HEADH = 92;
+    const H = 168 + 120 + HEADH + rows.length * RH + (rowsAll.length > MAX ? 50 : 0) + 100;
+    const c = canvas(W, H), ctx = c.getContext("2d");
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    header(ctx, W, `Конкурс 1P · ${res.name} — ${what}`, fit(ctx, `${PLN(k)} · ${contestSub(res)}`, W - 96, 28));
+    let y = 168 + 30;
+    const ok = rowsAll.filter((r) => r.ms[k].fc >= 100).length;
+    text(ctx, fit(ctx, `На темпе ${ok} из ${rowsAll.length} · сначала те, кто дальше всего от плана · «Нужно в день» — до конца конкурса`, W - PAD * 2, 24, 600), PAD + 4, y + 28, 24, 600, C.text2);
+    legend(ctx, PAD + 70, y + 54);
+    text(ctx, "прогноз: красное — не успевает к концу конкурса, зелёное — успевает", PAD + 380, y + 72, 21, 400, C.muted);
+    y += 120;
+    const fcCol = colorer(rows.map((r) => r.ms[k].fc), { norm: 100 }), gapCol = colorer(rows.map((r) => r.ms[k].gap), { lowerBetter: true });
+    rr(ctx, PAD, y, W - PAD * 2, HEADH + rows.length * RH, 16, C.card);
+    tableHead(ctx, W, PAD, y, HEADH);
+    let x = PAD + 44;
+    text(ctx, "№", PAD + 22, y + 56, 22, 700, "#fff", "center");
+    text(ctx, res.level === "asm" ? "Магазин" : "ASM", x + 12, y + 56, 23, 700, "#fff"); x += NAMEW;
+    if (withD) { text(ctx, "DSM", x + 12, y + 56, 23, 700, "#fff"); x += DW; }
+    cols.forEach(([, t, w]) => { headCell(ctx, t, x + w - 12, y); x += w; });
+    y += HEADH;
+    rows.forEach((r, i) => {
+      const m = r.ms[k];
+      let xx = PAD + 44;
+      text(ctx, String(i + 1), PAD + 22, y + 38, 21, 400, C.muted, "center");
+      text(ctx, fit(ctx, r.code || r.name, NAMEW - 24, 24, 600), xx + 12, y + 38, 24, 600); xx += NAMEW;
+      if (withD) { text(ctx, fit(ctx, r.dsm || "", DW - 20, 21), xx + 12, y + 38, 21, 400, C.text2); xx += DW; }
+      cols.forEach(([cid, , w]) => {
+        const v = m[cid];
+        const bg = cid === "fc" ? fcCol(v) : cid === "gap" ? gapCol(v) : null;
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(xx + 2, y + 3, w - 4, RH - 6); }
+        const t = v == null ? "—" : cid === "pct" || cid === "fc" ? fmt(v, 1) + "%" : (cid === "gap" || cid === "perDay") && m.gap === 0 ? (cid === "gap" ? "✓" : "—") : fmt(v, 0) + " ₽";
+        text(ctx, t, xx + w - 12, y + 38, 23, cid === "perDay" ? 700 : 400, C.text, "right");
+        xx += w;
+      });
+      ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
+      y += RH;
+    });
+    if (rowsAll.length > MAX) text(ctx, `Показаны ${MAX} из ${rowsAll.length}, остальные — в файле отчёта.`, PAD + 4, y + 36, 22, 400, C.muted);
+    footer(ctx, W, H - 28);
+    return c;
+  }
+  function contestSellersCard(res, k) {
+    const PAD = 40, e = res.sellers, R = KPI.contest.RULES;
+    if (!e.length) {
+      const W = 1080, c = canvas(W, 400), ctx = c.getContext("2d");
+      ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, 400); header(ctx, W, `Конкурс 1P · ${res.name}`, fit(ctx, contestSub(res), W - 96, 28));
+      text(ctx, "В файле конкурса нет продавцов этого магазина.", PAD + 8, 260, 30, 400, C.text2); footer(ctx, W, 375); return c;
+    }
+    const cols = [["role", "Должность", 180, "l"], ["qty", "Штук", 100], ["rub", "Оборот 1Р", 180], ["share", "Доля|в магазине", 140], ["place", "Место", 100], ["bonus", `Доплата|при плане ${k + 1}`, 170]];
+    const NAMEW = 400, W = PAD * 2 + 44 + NAMEW + cols.reduce((a, c) => a + c[2], 0) + 16;
+    const RH = 60, HEADH = 92, H = 168 + 120 + HEADH + e.length * RH + 100;
+    const c = canvas(W, H), ctx = c.getContext("2d");
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    header(ctx, W, `Конкурс 1P · ${res.name} — продавцы`, fit(ctx, `${PLN(k)} · ${contestSub(res)}`, W - 96, 28));
+    let y = 168 + 30;
+    const m = res.ms[k];
+    text(ctx, fit(ctx, m.gap === 0 ? `Магазин выполнил план ${k + 1}` : `Магазину до плана ${k + 1}: не хватает ${money(m.gap)}, нужно ${money(m.perDay)} в день · прогноз ${fmt(m.fc, 0)}%`, W - PAD * 2, 25, 700), PAD + 4, y + 30, 25, 700, m.gap === 0 ? C.good : C.bad);
+    text(ctx, fit(ctx, `Доплата продавцу — ${fmt(R.fundSeller[k], 1)}% от личного оборота 1Р, если магазин выполнит план ${k + 1}. Посчитана от текущего оборота.`, W - PAD * 2, 22), PAD + 4, y + 70, 22, 400, C.muted);
+    y += 120;
+    const rubCol = colorer(e.map((x) => x.rub), {});
+    rr(ctx, PAD, y, W - PAD * 2, HEADH + e.length * RH, 16, C.card);
+    tableHead(ctx, W, PAD, y, HEADH);
+    let x = PAD + 44;
+    text(ctx, "№", PAD + 22, y + 56, 22, 700, "#fff", "center");
+    text(ctx, "Сотрудник", x + 12, y + 56, 23, 700, "#fff"); x += NAMEW;
+    cols.forEach(([, t, w, al]) => { if (al === "l") text(ctx, t, x + 12, y + 56, 21, 700, "#fff"); else headCell(ctx, t, x + w - 12, y); x += w; });
+    y += HEADH;
+    e.forEach((r, i) => {
+      let xx = PAD + 44;
+      text(ctx, String(i + 1), PAD + 22, y + 39, 21, 400, C.muted, "center");
+      text(ctx, fit(ctx, r.name, NAMEW - 24, 24, 600), xx + 12, y + 39, 24, 600); xx += NAMEW;
+      cols.forEach(([cid, , w, al]) => {
+        if (al === "l") { text(ctx, fit(ctx, r.role || "", w - 20, 21), xx + 12, y + 39, 21, 400, C.text2); xx += w; return; }
+        const v = cid === "bonus" ? (r.rub > 0 ? (r.rub * R.fundSeller[k]) / 100 : null) : r[cid];
+        if (cid === "rub") { const bg = rubCol(v); if (bg) { ctx.fillStyle = bg; ctx.fillRect(xx + 2, y + 3, w - 4, RH - 6); } }
+        const t = v == null ? "—" : cid === "share" ? fmt(v, 1) + "%" : cid === "rub" || cid === "bonus" ? fmt(v, 0) + " ₽" : fmt(v, 0);
+        text(ctx, t, xx + w - 12, y + 39, 23, cid === "bonus" ? 700 : 400, C.text, "right");
+        xx += w;
+      });
+      ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
+      y += RH;
+    });
+    footer(ctx, W, H - 28);
+    return c;
+  }
+
   // ---------------------------------------------------------------- PNG
   function toBlob(c) { return new Promise((res) => c.toBlob((b) => res(b), "image/png")); }
   function fileName(res, p, kind) {
     const id = String(res.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
-    const per = { day: "den", week: "nedelya", month: "mesyac" }[p];
+    const per = { day: "den", week: "nedelya", month: "mesyac", p1: "plan1", p2: "plan2", p3: "plan3" }[p] || p;
     const d = new Date();
-    return `${id}_${{ staff: "prodavcy", region: "region", stores: "magaziny" }[kind] || "magazin"}_${per}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.png`;
+    return `${id}_${{ staff: "prodavcy", region: "region", stores: "magaziny", csum: "konkurs", clist: "konkurs_spisok" }[kind] || "magazin"}_${per}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.png`;
   }
   async function makeImage(res, p, kind) {
-    const c = kind === "staff" ? staffCard(res, p) : kind === "stores" ? storesCard(res, p) : storeCard(res, p);
+    const c = kind === "csum" ? contestSummaryCard(res) : kind === "clist" ? contestListCard(res, +String(p).replace("p", "") - 1)
+      : kind === "staff" ? staffCard(res, p) : kind === "stores" ? storesCard(res, p) : storeCard(res, p);
     const blob = await toBlob(c);
     return { blob, file: new File([blob], fileName(res, p, kind), { type: "image/png" }), width: c.width, height: c.height };
   }
 
-  KPI.share = { storeCard, staffCard, storesCard, makeImage };
+  KPI.share = { storeCard, staffCard, storesCard, contestSummaryCard, contestListCard, makeImage };
 })(typeof globalThis !== "undefined" ? globalThis : this);
