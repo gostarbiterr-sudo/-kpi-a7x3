@@ -5,7 +5,7 @@
   const { PERIODS, PERIOD_RU, normCode } = KPI.loader;
 
   const DEFAULT_NORMS = {
-    attach_min: 15.0, srv_share_min: 3.5, chdu_min: 5.0, compl_emp_min: 35.0, srv_emp_min: 5.5,
+    attach_min: 15.0, srv_share_min: 3.5, chdu_min: 5.0, compl_emp_min: 35.0, srv_emp_min: 5.5, att_emp_min: 15.0, cps_emp_min: 0,
     emp_relative_low: 0.8, info_drop_pct: -5.0,
   };
 
@@ -172,6 +172,16 @@
     }
     if (!e.length) return res;
     if (hasCol(e, "revenue")) e.sort((a, b) => b.revenue - a.revenue);
+    // сколько оборота услуг не хватает до нормы доли услуг (услуги входят в оборот: (S + x) / (R + x) = норма)
+    const sn = norms.srv_emp_min / 100;
+    e = e.map((r) => {
+      const R = val(r, "revenue"), sh = val(r, "srv_sh");
+      let S = val(r, "srv_rev");
+      if (S == null && R != null && sh != null) S = (R * sh) / 100;
+      const need = R != null && S != null && sn > 0 && sn < 1 ? Math.max(0, (sn * R - S) / (1 - sn)) : null;
+      return Object.assign({}, r, { srv_need: need });
+    });
+    res.srvNeedTotal = e.reduce((a, r) => a + (r.srv_need || 0), 0);
     res.n = e.length;
     const med = {};
     for (const c of ["avg", "att", "cps", "upt"]) if (hasCol(e, c)) { const a = nums(e, c); if (a.length) med[c] = median(a); }
@@ -184,11 +194,13 @@
       const fails = [], lows = [], parts = [];
       const compl = vals.compl, srv = vals.srv_sh;
       if (compl != null && compl < norms.compl_emp_min) { fails.push("compl"); parts.push(`компл. чеки ${fmt(compl, 1)}% (норма ≥ ${fmt(norms.compl_emp_min, 1)}%)`); }
-      if (srv != null && srv < norms.srv_emp_min) { fails.push("srv_sh"); parts.push(`доля услуг ${fmt(srv, 1)}% (норма ≥ ${fmt(norms.srv_emp_min, 1)}%)`); }
+      if (srv != null && srv < norms.srv_emp_min) { fails.push("srv_sh"); parts.push(`доля услуг ${fmt(srv, 1)}% (норма ≥ ${fmt(norms.srv_emp_min, 1)}%)${r.srv_need ? `, не хватает ${fmt(r.srv_need, 0)} ₽ услуг` : ""}`); }
+      if (norms.att_emp_min > 0 && vals.att != null && vals.att < norms.att_emp_min) { fails.push("att"); parts.push(`аттач АКС ${fmt(vals.att, 1)}% (норма ≥ ${fmt(norms.att_emp_min, 1)}%)`); }
+      if (norms.cps_emp_min > 0 && vals.cps != null && vals.cps < norms.cps_emp_min) { fails.push("cps"); parts.push(`чеков в смену ${fmt(vals.cps, 1)} (норма ≥ ${fmt(norms.cps_emp_min, 1)})`); }
       if (e.length >= 3) {
         for (const [c, lab] of [["avg", "средний чек"], ["att", "аттач АКС"], ["cps", "чеков в смену"], ["upt", "штук в чеке"]]) {
           const x = vals[c];
-          if (x != null && c in med && med[c] > 0 && x < rel * med[c]) {
+          if (x != null && !fails.includes(c) && c in med && med[c] > 0 && x < rel * med[c]) {
             lows.push(c);
             const [d_, u_] = { avg: [0, " ₽"], att: [1, "%"], cps: [1, ""], upt: [2, ""] }[c];
             parts.push(`${lab} ${fmt(x, d_)}${u_} — ниже медианы магазина (${fmt(med[c], d_)}${u_})`);
@@ -314,11 +326,13 @@
       const v = f.vals, todo = [], why = [], med = er.median;
       if (f.fails.includes("compl")) { todo.push("продавать связку основной товар + аксессуар + услуга в каждом чеке (разбор скрипта и тренировка на смене)"); why.push(`доля комплектных чеков ${fmt(v.compl, 1)}% при норме ≥ ${fmt(norms.compl_emp_min, 1)}%`); }
       if (f.fails.includes("srv_sh")) { todo.push("предлагать услугу на каждый основной товар, отрабатывать отказ"); why.push(`доля услуг ${fmt(v.srv_sh, 1)}% при норме ≥ ${fmt(norms.srv_emp_min, 1)}%`); }
+      if (f.fails.includes("att")) { todo.push("предлагать аксессуар в каждом чеке"); why.push(`аттач АКС ${fmt(v.att, 1)}% при норме ≥ ${fmt(norms.att_emp_min, 1)}%`); }
+      if (f.fails.includes("cps")) { todo.push("активнее выходить к клиентам, сократить простой в зале"); why.push(`чеков в смену ${fmt(v.cps, 1)} при норме ≥ ${fmt(norms.cps_emp_min, 1)}`); }
       if (f.lows.includes("avg")) { todo.push("допродажи и более высокая комплектация"); why.push(`средний чек ${fmt(v.avg, 0)} против медианы ${fmt(med.avg, 0)}`); }
       if (f.lows.includes("cps")) { todo.push("активнее выходить к клиентам, сократить простой в зале"); why.push(`чеков в смену ${fmt(v.cps, 1)} против ${fmt(med.cps, 1)}`); }
       if (f.lows.includes("att")) { todo.push("предлагать аксессуар в каждом чеке"); why.push(`аттач АКС ${fmt(v.att, 1)}% против ${fmt(med.att, 1)}%`); }
       if (f.lows.includes("upt")) { todo.push("предлагать второй товар в чек"); why.push(`штук в чеке ${fmt(v.upt, 2)} против ${fmt(med.upt, 2)}`); }
-      const prio = f.fails.length === 2 ? "Высокий" : f.fails.length ? "Средний" : "Низкий";
+      const prio = f.fails.length >= 2 ? "Высокий" : f.fails.length ? "Средний" : "Низкий";
       return { key: `emp:${f.name}`, prio, who: `Сотрудник ${f.name}`, what: capFirst(todo.join("; ")) + ".", why: why.join("; ") + ".",
         kpi: `Выход на нормы: компл. чеки ≥ ${fmt(norms.compl_emp_min, 0)}%, услуги ≥ ${fmt(norms.srv_emp_min, 1)}%` };
     });
@@ -404,9 +418,16 @@
       const f2 = er.flagged.filter((f) => f.fails.includes("srv_sh")).map((f) => f.name);
       if (f1.length) F("Плохо", "Сотрудники", `Доля комплектных чеков ниже ${fmt(norms.compl_emp_min, 0)}%: ${f1.length} из ${n} — ` + f1.slice(0, 6).join("; ") + (f1.length > 6 ? "…" : "") + ".");
       else F("Хорошо", "Сотрудники", `Доля комплектных чеков у всех ${n} сотрудников не ниже ${fmt(norms.compl_emp_min, 0)}%.`);
-      if (f2.length) F("Плохо", "Сотрудники", `Доля услуг ниже ${fmt(norms.srv_emp_min, 1)}%: ${f2.length} из ${n} — ` + f2.slice(0, 6).join("; ") + (f2.length > 6 ? "…" : "") + ".");
+      if (f2.length) {
+        const need = er.e.filter((r) => r.srv_need > 0).map((r) => `${r.name} (+${fmt(r.srv_need, 0)} ₽)`);
+        F("Плохо", "Сотрудники", `Доля услуг ниже ${fmt(norms.srv_emp_min, 1)}%: ${f2.length} из ${n}. До нормы не хватает услуг на ${fmt(er.srvNeedTotal, 0)} ₽ — ` + need.slice(0, 6).join("; ") + (need.length > 6 ? "…" : "") + ".");
+      }
       else F("Хорошо", "Сотрудники", `Доля услуг у всех ${n} сотрудников не ниже ${fmt(norms.srv_emp_min, 1)}%.`);
-      if (er.top.length) F("Хорошо", "Сотрудники", "Выполняют обе нормы (пример для коллег): " + er.top.join("; ") + ".");
+      const f3 = er.flagged.filter((f) => f.fails.includes("att")).map((f) => f.name);
+      if (norms.att_emp_min > 0 && f3.length) F("Плохо", "Сотрудники", `Аттач АКС ниже ${fmt(norms.att_emp_min, 0)}%: ${f3.length} из ${n} — ` + f3.slice(0, 6).join("; ") + (f3.length > 6 ? "…" : "") + ".");
+      const f4 = er.flagged.filter((f) => f.fails.includes("cps")).map((f) => f.name);
+      if (norms.cps_emp_min > 0 && f4.length) F("Плохо", "Сотрудники", `Чеков в смену меньше ${fmt(norms.cps_emp_min, 1)}: ${f4.length} из ${n} — ` + f4.slice(0, 6).join("; ") + (f4.length > 6 ? "…" : "") + ".");
+      if (er.top.length) F("Хорошо", "Сотрудники", "Выполняют все нормы (пример для коллег): " + er.top.join("; ") + ".");
       if (er.skipped) out.notes.push(`Сотрудников без оборота за период (не оцениваются): ${er.skipped}.`);
       out.kpi.push(["Сотрудников с продажами", String(n)]);
     } else if (!out.has_emp) out.notes.push(`Сотрудники магазина ${code} не найдены на вкладке за этот период.`);
@@ -569,7 +590,7 @@
     const dY = isn(st.rev_y) && st.rev_y > -100 ? st.revenue - st.revenue / (1 + st.rev_y / 100) : null;
     const dP = isn(st.rev_p) && st.rev_p > -100 ? st.revenue - st.revenue / (1 + st.rev_p / 100) : null;
     const mn = (ids) => { const a = ids.map((c) => val(st, c)).filter((x) => x != null); return a.length ? Math.min(...a) : null; };
-    return { code: st.code, city: st.city || "", tc: st.tc || "", asm: st.asm || "", revenue: st.revenue, rev_l: val(st, "rev_l"), rev_y: val(st, "rev_y"),
+    return { code: st.code, city: st.city || "", tc: st.tc || "", asm: st.asm || "", revenue: st.revenue, rev_p: val(st, "rev_p"), rev_l: val(st, "rev_l"), rev_y: val(st, "rev_y"),
       revMin: mn(["rev_p", "rev_y", "rev_l"]), effMin: mn(["eff_p", "eff_y", "eff_l", "effo_p", "effo_y", "effo_l"]), convMin: mn(["conv_p", "conv_y", "conv_l"]),
       conv: val(st, "conv"), acc_att: val(st, "acc_att"), srv_sh: val(st, "srv_sh"), chdu: val(st, "chdu"), avg: val(st, "avg"),
       checks, failGroups: [...new Set(fails.map((c) => c.group))], nFail: fails.length, nChecks: checks.length, dY, dP };

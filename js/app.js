@@ -158,10 +158,12 @@
   function openShare() {
     const rep = document.querySelector("#report .rep");
     shPer = (rep && rep.dataset.period) || "month";
-    if (result.type === "region") shKind = "store";
+    const reg = result.type === "region";
+    if (shKind !== "store") shKind = reg ? "stores" : "staff";
     const kb = document.querySelectorAll("#shKind button");
-    kb[0].textContent = result.type === "region" ? "Регион — главное" : "Магазин — главное";
-    kb[1].hidden = result.type === "region";
+    kb[0].textContent = reg ? "Регион — главное" : "Магазин — главное";
+    kb[1].textContent = reg ? "Магазины — KPI" : "Продавцы — KPI";
+    kb[1].dataset.k = reg ? "stores" : "staff";
     renderShare();
     $("#shareDlg").showModal();
   }
@@ -171,7 +173,7 @@
     const seq = ++shSeq;
     shImg = null; $("#shSend").disabled = $("#shSave").disabled = true;
     try {
-      const img = await KPI.share.makeImage(result, shPer, shKind === "staff" ? "staff" : result.type === "region" ? "region" : "store");
+      const img = await KPI.share.makeImage(result, shPer, shKind !== "store" ? shKind : result.type === "region" ? "region" : "store");
       if (seq !== shSeq) return;
       shImg = img;
       if (shUrl) URL.revokeObjectURL(shUrl);
@@ -265,7 +267,8 @@
 
   // ---------------------------------------------------------------- нормы
   const NORM_FIELDS = [["attach_min", "Аттач аксессуаров магазина, не ниже, %"], ["srv_share_min", "Доля услуг магазина, не ниже, %"],
-    ["chdu_min", "ЧДУ магазина, не ниже, %"], ["compl_emp_min", "Доля комплектных чеков продавца, не ниже, %"], ["srv_emp_min", "Доля услуг продавца, не ниже, %"]];
+    ["chdu_min", "ЧДУ магазина, не ниже, %"], ["compl_emp_min", "Доля комплектных чеков продавца, не ниже, %"], ["srv_emp_min", "Доля услуг продавца, не ниже, %"],
+    ["att_emp_min", "Аттач аксессуаров продавца, не ниже, % (0 — без нормы)"], ["cps_emp_min", "Чеков в смену у продавца, не ниже (0 — без нормы)"]];
   function openNorms() {
     const n = norms();
     $("#normsForm").innerHTML = NORM_FIELDS.map(([k, t]) => `<label>${esc(t)}<input type="number" inputmode="decimal" step="0.1" name="${k}" value="${n[k]}"></label>`).join("") +

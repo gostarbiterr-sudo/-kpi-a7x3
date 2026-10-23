@@ -174,9 +174,10 @@
     return `<div class="two"><section class="panel"><h3>Где болит</h3>${items(P.findings.filter((f) => f.level === "Плохо"), "bad")}</section>` +
       `<section class="panel"><h3>Что хорошо</h3>${items(P.findings.filter((f) => f.level === "Хорошо"), "good")}</section></div>`;
   }
-  function staffCounts(er) {
-    const both = er.n - er.flagged.filter((f) => f.fails.length).length;
-    return [both, er.flagged.filter((f) => f.fails.length === 1).length, er.flagged.filter((f) => f.fails.length === 2).length];
+  function staffCounts(er) {          // «обе нормы» — доля комплектных чеков и доля услуг
+    const k = (f) => f.fails.filter((c) => c === "compl" || c === "srv_sh").length;
+    const both = er.n - er.flagged.filter((f) => k(f)).length;
+    return [both, er.flagged.filter((f) => k(f) === 1).length, er.flagged.filter((f) => k(f) === 2).length];
   }
   function staffOverview(res, norms) {
     return `<p class="muted">Нормы продавца: доля комплектных чеков ≥ ${fmt(norms.compl_emp_min, 0)}%, доля услуг ≥ ${fmt(norms.srv_emp_min, 1)}%.</p>` + SHOW.map((p) => {
@@ -223,6 +224,7 @@
       `<section class="panel"><h3>Доля услуг</h3><p class="muted">Норма — не ниже ${fmt(smin, 1)}%.</p>${has("srv_sh") ? hbars(rowsFor("srv_sh", smin), smin) : '<p class="muted">Нет колонки.</p>'}</section></div>`;
     const contrib = revRows.length ? `<section class="panel"><h3>Вклад в оборот магазина</h3><p class="muted">Доля каждого продавца в обороте за период.</p>${hbars(revRows, null, "%", 1)}</section>` : "";
     const cols = EMP_COLS.filter(([c]) => has(c));
+    if (e.some((r) => r.srv_need != null)) cols.push(["srv_need", `Не хватает услуг до ${fmt(smin, 1)}%`, 0, " ₽"]);
     const mx = {}; cols.forEach(([c]) => (mx[c] = Math.max(0, ...e.map((r) => (isn(r[c]) ? r[c] : 0)))));
     const gradeOf = (r) => { const f = flags[r.name] || { fails: [], lows: [] }; return [f, f.fails.length ? "bad" : f.lows.length ? "warn" : "good"]; };
     const gradeTxt = { bad: "ниже нормы", warn: "хуже коллег", good: "в норме" };
@@ -230,7 +232,7 @@
     const body = e.map((r) => {
       const [f, g] = gradeOf(r);
       return `<tr><th class="rl">${esc(r.name)}</th>` + cols.map(([c, , d, u]) => {
-        const v = num(r[c]), cls = f.fails.includes(c) ? "c-bad" : f.lows.includes(c) ? "c-warn" : "";
+        const v = num(r[c]), cls = c === "srv_need" ? (v > 0 ? "c-bad" : "") : f.fails.includes(c) ? "c-bad" : f.lows.includes(c) ? "c-warn" : "";
         const w = v != null && mx[c] > 0 ? (v / mx[c]) * 100 : 0;
         return `<td class="${cls}"><div class="cellv">${fmt(v, d)}${v != null ? esc(u) : ""}</div><div class="cbar"><div style="width:${Math.round(Math.max(0, Math.min(100, w)))}%"></div></div></td>`;
       }).join("") + `<td>${chip(g, gradeTxt[g])}</td><td class="todo">${esc(todo[r.name] || "Держать результат")}</td></tr>`;
@@ -238,15 +240,17 @@
     const cards = e.map((r) => {
       const [f, g] = gradeOf(r);
       const cells = cols.map(([c, t, d, u]) => {
-        const v = num(r[c]), cls = f.fails.includes(c) ? "c-bad" : f.lows.includes(c) ? "c-warn" : "";
+        const v = num(r[c]), cls = c === "srv_need" ? (v > 0 ? "c-bad" : "") : f.fails.includes(c) ? "c-bad" : f.lows.includes(c) ? "c-warn" : "";
         return `<div class="ec ${cls}"><small>${esc(t)}</small><b>${fmt(v, d)}${v != null ? esc(u) : ""}</b></div>`;
       }).join("");
       return `<article class="empcard ${g}"><div class="ech"><b>${esc(r.name)}</b>${chip(g, gradeTxt[g])}</div><div class="ecg">${cells}</div><p class="todo">${esc(todo[r.name] || "Держать результат")}</p></article>`;
     }).join("");
     const d = P.date_emp;
-    const top = `<div class="pills"><span class="pill"><small>Сотрудников с продажами</small>${er.n}</span>${d ? `<span class="pill"><small>Выгрузка</small>${ru(d)}</span>` : ""}</div>` +
+    const needN = e.filter((r) => r.srv_need > 0).length;
+    const top = `<div class="pills"><span class="pill"><small>Сотрудников с продажами</small>${er.n}</span>${d ? `<span class="pill"><small>Выгрузка</small>${ru(d)}</span>` : ""}` +
+      (er.srvNeedTotal != null && e.some((r) => r.srv_need != null) ? `<span class="pill"><small>Не хватает услуг до ${fmt(smin, 1)}%</small>${needN ? `${money(er.srvNeedTotal)} · ${needN} чел.` : "все в норме"}</span>` : "") + `</div>` +
       segbar([["выполняют обе нормы", both, "good"], ["одну", one, "warn"], ["ни одной", none, "bad"]]);
-    const table = `<section class="panel"><h3>Профиль продавцов</h3><p class="muted">Красный — ниже нормы, жёлтый — ниже 80% медианы коллег.</p>` +
+    const table = `<section class="panel"><h3>Профиль продавцов</h3><p class="muted">Красный — ниже нормы, жёлтый — ниже 80% медианы коллег. «Не хватает услуг» — сколько рублей услуг нужно добавить, чтобы доля услуг продавца достигла ${fmt(smin, 1)}%.</p>` +
       `<div class="wide-only"><div class="tw"><table class="mt emp"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>` +
       `<div class="narrow-only">${cards}</div></section>`;
     return top + charts + contrib + table;

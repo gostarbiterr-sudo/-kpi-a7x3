@@ -167,9 +167,53 @@
     return c;
   }
 
+  // ---------------------------------------------------------------- условное форматирование (как цветовая шкала в Excel)
+  // t: 0 — красный, 0.5 — жёлтый, 1 — зелёный (пастельные, чтобы читался текст)
+  const RED = [244, 166, 166], YEL = [255, 230, 153], GRN = [150, 212, 150];
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  function scaleColor(t) {
+    t = clamp(t);
+    const [a, b, k] = t < 0.5 ? [RED, YEL, t / 0.5] : [YEL, GRN, (t - 0.5) / 0.5];
+    return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * k)).join(",")})`;
+  }
+  // правило раскраски для колонки: {norm} — ниже нормы красно-жёлтое, выше — зелёное; иначе шкала от худшего к лучшему
+  function colorer(values, rule) {
+    const vs = values.filter((v) => v != null);
+    if (!vs.length) return () => null;
+    const mn = Math.min(...vs), mx = Math.max(...vs);
+    const srt = [...vs].sort((a, b) => a - b), med = srt[Math.floor(srt.length / 2)];
+    if (rule && rule.norm != null) {
+      const n = rule.norm, lo = Math.min(mn, n), hi = Math.max(mx, n);
+      return (v) => {
+        if (v == null) return null;
+        if (v < n) return scaleColor(n - lo > 0 ? 0.45 * ((v - lo) / (n - lo)) : 0);
+        return scaleColor(0.65 + 0.35 * (hi - n > 0 ? (v - n) / (hi - n) : 1));
+      };
+    }
+    if (rule && rule.lowerBetter) return (v) => (v == null ? null : v <= 0 ? scaleColor(1) : scaleColor(mx > 0 ? 0.45 * (1 - v / mx) : 1));
+    if (vs.length < 2 || mx === mn) return () => null;
+    return (v) => {
+      if (v == null) return null;
+      const t = v <= med ? (med > mn ? 0.5 * ((v - mn) / (med - mn)) : 0.5) : mx > med ? 0.5 + 0.5 * ((v - med) / (mx - med)) : 0.5;
+      return scaleColor(t);
+    };
+  }
+  function legend(ctx, x, y) {
+    const w = 220, h = 22;
+    for (let i = 0; i < w; i++) { ctx.fillStyle = scaleColor(i / (w - 1)); ctx.fillRect(x + i, y, 1, h); }
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    text(ctx, "хуже", x - 10, y + 18, 21, 400, C.text2, "right");
+    text(ctx, "лучше", x + w + 10, y + 18, 21, 400, C.text2);
+  }
+  function tableHead(ctx, W, PAD, y, HEADH) {
+    ctx.fillStyle = C.navy; ctx.beginPath(); ctx.moveTo(PAD + 16, y); ctx.lineTo(W - PAD - 16, y); ctx.arcTo(W - PAD, y, W - PAD, y + 16, 16); ctx.lineTo(W - PAD, y + HEADH); ctx.lineTo(PAD, y + HEADH); ctx.lineTo(PAD, y + 16); ctx.arcTo(PAD, y, PAD + 16, y, 16); ctx.fill();
+  }
+  function headCell(ctx, t, xr, y) {
+    const ls = t.split("|");
+    ls.forEach((l, j) => text(ctx, l, xr, y + (ls.length === 1 ? 56 : ls.length === 2 ? 42 + j * 28 : 30 + j * 26), 21, 700, "#fff", "right"));
+  }
+
   // ---------------------------------------------------------------- таблица продавцов
-  const SCOLS = [["revenue", "Оборот", 0, " ₽", 170], ["avg", "Средний|чек", 0, " ₽", 130], ["att", "Аттач|АКС", 1, "%", 112], ["compl", "Компл.|чеки", 1, "%", 112],
-    ["cps", "Чеков|в смену", 1, "", 118], ["upt", "Штук|в чеке", 2, "", 104], ["acc_sh", "Доля|АКС", 1, "%", 104], ["srv_sh", "Доля|услуг", 1, "%", 104]];
   function staffCard(res, p) {
     const P = res.periods[p], er = P.emp, norms = res.norms, info = res.info || {};
     const title = [res.code, info["Город"], info["ТЦ"]].filter(Boolean).join(" · ") + " — продавцы";
@@ -181,58 +225,121 @@
       ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, 400); header(ctx, W, title, sub);
       text(ctx, "Нет данных по продавцам этого магазина за период.", PAD + 8, 260, 30, 400, C.text2); footer(ctx, W, 375); return c;
     }
-    const e = er.e, cols = SCOLS.filter(([cid]) => e.length && cid in e[0]);
-    const NAMEW = 420, GRADEW = 130;
-    const W = PAD * 2 + 44 + NAMEW + cols.reduce((a, c) => a + c[4], 0) + GRADEW;
-    const RH = 62, HEADH = 92;
-    const flags = {}; er.flagged.forEach((f) => (flags[f.name] = f));
-    const both = er.n - er.flagged.filter((f) => f.fails.length).length;
-    const H = 168 + 110 + HEADH + e.length * RH + 150;
+    const e = er.e, sm = norms.srv_emp_min;
+    const nz = (v) => (v > 0 ? v : null);
+    // [поле, заголовок, знаков, единица, ширина, правило раскраски]
+    const cols = [["revenue", "Оборот", 0, " ₽", 170, {}], ["avg", "Средний|чек", 0, " ₽", 130, {}],
+      ["att", "Аттач|АКС", 1, "%", 112, { norm: nz(norms.att_emp_min) }], ["compl", "Компл.|чеки", 1, "%", 112, { norm: nz(norms.compl_emp_min) }],
+      ["cps", "Чеков|в смену", 1, "", 118, { norm: nz(norms.cps_emp_min) }], ["upt", "Штук|в чеке", 2, "", 104, {}],
+      ["acc_sh", "Доля|АКС", 1, "%", 104, {}], ["srv_sh", "Доля|услуг", 1, "%", 104, { norm: nz(sm) }],
+      ["srv_need", `Не хватает|услуг до|${fmt(sm, 1)}%`, 0, " ₽", 150, { lowerBetter: true }]]
+      .filter(([cid]) => e.some((r) => num(r[cid]) != null));
+    const col = {}; cols.forEach(([cid, , , , , rule]) => (col[cid] = colorer(e.map((r) => num(r[cid])), rule)));
+    const NAMEW = 400;
+    const W = PAD * 2 + 44 + NAMEW + cols.reduce((a, c) => a + c[4], 0) + 16;
+    const RH = 62, HEADH = 100;
+    const needN = e.filter((r) => r.srv_need > 0).length;
+    const H = 168 + 150 + HEADH + e.length * RH + 110;
     const c = canvas(W, H), ctx = c.getContext("2d");
     ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
-    header(ctx, W, title, sub, { text: `обе нормы: ${both} из ${er.n}`, st: both === er.n ? "good" : both >= er.n / 2 ? "warn" : "bad" });
+    header(ctx, W, title, sub);
     let y = 168 + 30;
-    text(ctx, `Нормы продавца: доля комплектных чеков ≥ ${fmt(norms.compl_emp_min, 0)}%, доля услуг ≥ ${fmt(norms.srv_emp_min, 1)}%`, PAD + 4, y + 30, 25, 600, C.text2);
-    const lg = [[C.badbg, "ниже нормы"], [C.warnbg, "заметно ниже коллег по магазину"]];
-    let lx = PAD + 4;
-    lg.forEach(([col, t]) => { rr(ctx, lx, y + 52, 26, 26, 6, col, C.line); text(ctx, t, lx + 36, y + 73, 22, 400, C.text2); ctx.font = font(22); lx += ctx.measureText(t).width + 80; });
-    y += 110;
-    // шапка таблицы
+    const nrm = [`доля услуг ≥ ${fmt(sm, 1)}%`, `компл. чеки ≥ ${fmt(norms.compl_emp_min, 0)}%`];
+    if (norms.att_emp_min > 0) nrm.push(`аттач АКС ≥ ${fmt(norms.att_emp_min, 0)}%`);
+    if (norms.cps_emp_min > 0) nrm.push(`чеков в смену ≥ ${fmt(norms.cps_emp_min, 1)}`);
+    text(ctx, fit(ctx, `Нормы продавца: ${nrm.join(", ")}`, W - PAD * 2, 25, 600), PAD + 4, y + 30, 25, 600, C.text2);
+    if (er.srvNeedTotal != null && e.some((r) => r.srv_need != null))
+      text(ctx, fit(ctx, needN ? `Не хватает услуг до ${fmt(sm, 1)}%: всего ${money(er.srvNeedTotal)} у ${needN} из ${er.n} продавцов` : `Доля услуг ${fmt(sm, 1)}% выполнена у всех продавцов`, W - PAD * 2, 25, 700), PAD + 4, y + 70, 25, 700, needN ? C.bad : C.good);
+    legend(ctx, PAD + 70, y + 92);
+    text(ctx, "колонки с нормой: красное — ниже нормы, зелёное — норма выполнена", PAD + 380, y + 110, 21, 400, C.muted);
+    y += 150;
     rr(ctx, PAD, y, W - PAD * 2, HEADH + e.length * RH, 16, C.card);
-    ctx.fillStyle = C.navy; ctx.beginPath(); ctx.moveTo(PAD + 16, y); ctx.lineTo(W - PAD - 16, y); ctx.arcTo(W - PAD, y, W - PAD, y + 16, 16); ctx.lineTo(W - PAD, y + HEADH); ctx.lineTo(PAD, y + HEADH); ctx.lineTo(PAD, y + 16); ctx.arcTo(PAD, y, PAD + 16, y, 16); ctx.fill();
+    tableHead(ctx, W, PAD, y, HEADH);
     let x = PAD + 44;
     text(ctx, "№", PAD + 22, y + 56, 22, 700, "#fff", "center");
     text(ctx, "Сотрудник", x + 12, y + 56, 23, 700, "#fff");
     x += NAMEW;
-    cols.forEach(([, t, , , w]) => {
-      const ls = t.split("|");
-      ls.forEach((l, j) => text(ctx, l, x + w - 12, y + (ls.length === 1 ? 56 : 40 + j * 28), 22, 700, "#fff", "right"));
-      x += w;
-    });
-    text(ctx, "Оценка", x + GRADEW / 2, y + 56, 22, 700, "#fff", "center");
+    cols.forEach(([, t, , , w]) => { headCell(ctx, t, x + w - 12, y); x += w; });
     y += HEADH;
     e.forEach((r, i) => {
-      const f = flags[r.name] || { fails: [], lows: [] };
-      const grade = f.fails.length ? "bad" : f.lows.length ? "warn" : "good";
-      if (i % 2) { ctx.fillStyle = "#f7f8fa"; ctx.fillRect(PAD, y, W - PAD * 2, RH); }
       let xx = PAD + 44;
       text(ctx, String(i + 1), PAD + 22, y + 40, 22, 400, C.muted, "center");
       text(ctx, fit(ctx, r.name, NAMEW - 24, 25, 600), xx + 12, y + 40, 25, 600);
       xx += NAMEW;
       cols.forEach(([cid, , dd, u, w]) => {
         const v = num(r[cid]);
-        const bg = f.fails.includes(cid) ? C.badbg : f.lows.includes(cid) ? C.warnbg : null;
-        if (bg) { ctx.fillStyle = bg; ctx.fillRect(xx + 2, y + 4, w - 4, RH - 8); }
-        text(ctx, v != null ? fmt(v, dd) + u : "—", xx + w - 12, y + 40, 24, bg ? 700 : 400, C.text, "right");
+        const bg = col[cid](v);
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(xx + 2, y + 3, w - 4, RH - 6); }
+        const t = v == null ? "—" : cid === "srv_need" ? (v > 0 ? `+${fmt(v, 0)} ₽` : "норма") : fmt(v, dd) + u;
+        text(ctx, t, xx + w - 12, y + 40, 24, 400, C.text, "right");
         xx += w;
       });
-      badge(ctx, xx + GRADEW / 2 - 15, y + 15, grade, 30);
       ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
       y += RH;
     });
-    y += 40;
-    const okNames = er.top.length ? "Пример для коллег: " + er.top.join(", ") : "";
-    if (okNames) text(ctx, fit(ctx, okNames, W - PAD * 2, 24), PAD + 4, y + 10, 24, 400, C.text2);
+    footer(ctx, W, H - 28);
+    return c;
+  }
+
+  // ---------------------------------------------------------------- таблица магазинов региона
+  function storesCard(res, p) {
+    const P = res.periods[p], norms = res.norms, S = (P.stores || []).slice();
+    const title = `${res.name} — магазины`;
+    const d = P.date_kpi;
+    const sub = `${PERIOD_RU[p]}${d ? " · выгрузка " + ru(d) : ""}${res.level === "asm" ? " · ASM" : " · весь регион"}`;
+    const PAD = 40;
+    if (!S.length) {
+      const W = 1080, c = canvas(W, 400), ctx = c.getContext("2d");
+      ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, 400); header(ctx, W, title, sub);
+      text(ctx, "Нет данных по магазинам региона за период.", PAD + 8, 260, 30, 400, C.text2); footer(ctx, W, 375); return c;
+    }
+    const showAsm = res.level === "total" && S.some((x) => x.asm);
+    if (showAsm) S.sort((a, b) => String(a.asm).localeCompare(String(b.asm), "ru") || (b.revenue || 0) - (a.revenue || 0));
+    else S.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+    // [поле, заголовок, знаков, единица, ширина, знак ±, правило раскраски]
+    const Z = { norm: 0 };
+    const cols = [["revenue", "Оборот", 0, " ₽", 170, false, {}], ["rev_p", "Оборот|к периоду", 1, "%", 122, true, Z], ["rev_y", "Оборот|к году", 1, "%", 112, true, Z],
+      ["rev_l", "Оборот|LfL", 1, "%", 104, true, Z], ["conv", "Конвер-|сия", 1, "%", 102, false, {}], ["convMin", "Конверсия|прирост*", 1, " пп", 126, true, Z],
+      ["effMin", "Эффек-|тивность*", 1, " пп", 126, true, Z], ["acc_att", "Аттач|АКС", 1, "%", 104, false, { norm: norms.attach_min }],
+      ["srv_sh", "Доля|услуг", 1, "%", 100, false, { norm: norms.srv_share_min }], ["chdu", "ЧДУ", 1, "%", 92, false, { norm: norms.chdu_min }]]
+      .filter(([cid]) => S.some((x) => x[cid] != null));
+    const col = {}; cols.forEach(([cid, , , , , , rule]) => (col[cid] = colorer(S.map((r) => num(r[cid])), rule)));
+    const NAMEW = 300, ASMW = showAsm ? 190 : 0;
+    const W = PAD * 2 + 44 + NAMEW + ASMW + cols.reduce((a, c) => a + c[4], 0) + 16;
+    const RH = 58, HEADH = 92;
+    const worst = (P.failCounts || []).filter((f) => f.n).sort((a, b) => b.n - a.n).slice(0, 4);
+    const H = 168 + 150 + HEADH + S.length * RH + 110;
+    const c = canvas(W, H), ctx = c.getContext("2d");
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    header(ctx, W, title, sub);
+    let y = 168 + 30;
+    text(ctx, fit(ctx, worst.length ? "Чаще всего: " + worst.map((f) => `${f.label} — ${f.n} из ${f.total}`).join(" · ") : "Нарушений норм нет", W - PAD * 2, 25, 600), PAD + 4, y + 30, 25, 600, C.text2);
+    text(ctx, fit(ctx, `Нормы: конверсия и эффективность не ниже 0, оборот растёт, аттач ≥ ${fmt(norms.attach_min, 0)}%, доля услуг ≥ ${fmt(norms.srv_share_min, 1)}%, ЧДУ ≥ ${fmt(norms.chdu_min, 0)}%`, W - PAD * 2, 22), PAD + 4, y + 68, 22, 400, C.muted);
+    legend(ctx, PAD + 70, y + 92);
+    text(ctx, "* худший из период / год / LfL", PAD + 380, y + 110, 21, 400, C.muted);
+    y += 150;
+    rr(ctx, PAD, y, W - PAD * 2, HEADH + S.length * RH, 16, C.card);
+    tableHead(ctx, W, PAD, y, HEADH);
+    let x = PAD + 44;
+    text(ctx, "№", PAD + 22, y + 56, 22, 700, "#fff", "center");
+    text(ctx, "Магазин", x + 12, y + 56, 23, 700, "#fff"); x += NAMEW;
+    if (showAsm) { text(ctx, "ASM", x + 12, y + 56, 23, 700, "#fff"); x += ASMW; }
+    cols.forEach(([, t, , , w]) => { headCell(ctx, t, x + w - 12, y); x += w; });
+    y += HEADH;
+    S.forEach((r, i) => {
+      let xx = PAD + 44;
+      text(ctx, String(i + 1), PAD + 22, y + 38, 21, 400, C.muted, "center");
+      text(ctx, fit(ctx, [r.code, r.city].filter(Boolean).join(" · "), NAMEW - 24, 24, 600), xx + 12, y + 38, 24, 600); xx += NAMEW;
+      if (showAsm) { text(ctx, fit(ctx, r.asm || "—", ASMW - 20, 21, 400), xx + 12, y + 38, 21, 400, C.text2); xx += ASMW; }
+      cols.forEach(([cid, , dd, u, w, signed]) => {
+        const v = num(r[cid]), bg = col[cid](v);
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(xx + 2, y + 3, w - 4, RH - 6); }
+        text(ctx, v != null ? fmt(v, dd, signed) + u : "—", xx + w - 12, y + 38, 23, 400, C.text, "right");
+        xx += w;
+      });
+      ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
+      y += RH;
+    });
     footer(ctx, W, H - 28);
     return c;
   }
@@ -243,13 +350,13 @@
     const id = String(res.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
     const per = { day: "den", week: "nedelya", month: "mesyac" }[p];
     const d = new Date();
-    return `${id}_${kind === "staff" ? "prodavcy" : kind === "region" ? "region" : "magazin"}_${per}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.png`;
+    return `${id}_${{ staff: "prodavcy", region: "region", stores: "magaziny" }[kind] || "magazin"}_${per}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.png`;
   }
   async function makeImage(res, p, kind) {
-    const c = kind === "staff" ? staffCard(res, p) : storeCard(res, p);
+    const c = kind === "staff" ? staffCard(res, p) : kind === "stores" ? storesCard(res, p) : storeCard(res, p);
     const blob = await toBlob(c);
     return { blob, file: new File([blob], fileName(res, p, kind), { type: "image/png" }), width: c.width, height: c.height };
   }
 
-  KPI.share = { storeCard, staffCard, makeImage };
+  KPI.share = { storeCard, staffCard, storesCard, makeImage };
 })(typeof globalThis !== "undefined" ? globalThis : this);
