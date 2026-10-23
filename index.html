@@ -81,7 +81,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
   </section>
   <section class="box" id="step2" hidden>
     <h2><span>2</span>Что анализируем</h2>
-    <div class="seg2" role="tablist"><button type="button" data-m="store" class="on">Магазин</button><button type="button" data-m="region">Регион</button></div>
+    <div class="seg2" role="tablist"><button type="button" data-m="store" class="on">Магазин</button><button type="button" data-m="region">Регион</button><button type="button" data-m="contest">Конкурс 1P</button></div>
     <div id="storeBox">
       <div class="code-row"><input id="code" list="codes" placeholder="A103" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button id="go" type="button">Анализ</button></div>
       <datalist id="codes"></datalist>
@@ -91,8 +91,14 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
       <div class="code-row"><select id="region"></select><button id="goR" type="button">Анализ</button></div>
       <p class="muted">Весь регион или отдельный ASM — показатели, сравнение и рейтинг магазинов (без продавцов).</p>
     </div>
+    <div id="contestBox" hidden>
+      <div class="code-row"><select id="cLevel"></select><button id="goC" type="button">Показать</button></div>
+      <div class="code-row" style="margin-top:8px"><input id="cCode" list="cCodes" placeholder="или код магазина" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button id="goCS" type="button">Магазин</button></div>
+      <datalist id="cCodes"></datalist>
+      <p class="muted">Выполнение трёх планов конкурса: сколько не хватает в рублях, процент выполнения, прогноз и сколько нужно делать в день.</p>
+    </div>
     <div id="choices"></div>
-    <div class="row"><button class="ghost" id="plansBtn2" type="button">🎯 Планы</button></div>
+    <div class="row" id="plansRow"><button class="ghost" id="plansBtn2" type="button">🎯 Планы</button></div>
   </section>
 </div>
 <div id="report" hidden></div>
@@ -119,6 +125,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
 <script src="js/loader.js"></script>
 <script src="js/analysis.js"></script>
 <script src="js/report.js"></script>
+<script src="js/contest.js"></script>
 <script src="js/share.js"></script>
 <script src="js/app.js"></script>
 </body>
