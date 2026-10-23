@@ -63,6 +63,9 @@ details{margin-top:8px}summary{cursor:pointer;color:var(--accent);font-size:14px
 dialog{border:0;border-radius:16px;padding:18px;max-width:420px;width:calc(100% - 32px);background:var(--surface);color:var(--text)}
 dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 10px}
 #normsForm label{display:block;font-size:13px;color:var(--text2);margin:10px 0}#normsForm input{display:block;width:100%;margin-top:4px;font:600 17px inherit;font-family:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+#shareDlg{box-sizing:border-box;max-width:520px;max-height:94vh;overflow:auto}#shareDlg .seg2{margin:8px 0}
+#shPrev{display:block;width:100%;max-height:52vh;object-fit:contain;object-position:top;border:1px solid var(--line);border-radius:12px;background:#f4f5f7;margin:10px 0}
+#shareDlg .row button{flex:1}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -103,12 +106,20 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
   <button id="plansSave" type="button" style="width:100%;margin-top:10px">Сохранить и пересчитать</button>
   <p class="muted">Планы хранятся только на этом устройстве. Пустое поле — план не задан.</p>
 </dialog>
+<dialog id="shareDlg"><div class="dlg-h"><h2>Отправить картинкой</h2><button class="ghost x" id="shClose" type="button" aria-label="Закрыть">✕</button></div>
+  <div class="seg2 small" id="shPer"><button type="button" data-p="month" class="on">Месяц</button><button type="button" data-p="week">Неделя</button><button type="button" data-p="day">День</button></div>
+  <div class="seg2 small" id="shKind"><button type="button" data-k="store" class="on">Магазин — главное</button><button type="button" data-k="staff">Продавцы — KPI</button></div>
+  <img id="shPrev" alt="Предпросмотр картинки">
+  <div class="row"><button id="shSend" type="button">↗ Отправить</button><button class="ghost" id="shSave" type="button">⬇ Сохранить</button></div>
+  <p class="muted">Картинка рисуется на этом устройстве. Она уходит только туда, куда вы сами её отправите.</p>
+</dialog>
 <dialog id="normsDlg"><h2>Нормы</h2><p class="muted">Хранятся только на этом устройстве.</p><form id="normsForm"></form><button class="ghost" id="normsClose" type="button" style="width:100%;margin-top:8px">Закрыть</button></dialog>
 <div id="busy" hidden></div><div id="toast" hidden></div>
 <script src="js/xlsx.js"></script>
 <script src="js/loader.js"></script>
 <script src="js/analysis.js"></script>
 <script src="js/report.js"></script>
+<script src="js/share.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
