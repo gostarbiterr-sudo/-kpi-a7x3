@@ -113,8 +113,8 @@
       const worst = P.failCounts.filter((f) => f.n).sort((a, b) => b.n - a.n)[0];
       if (worst) main.push(`Магазины: ${worst.label} — ${worst.n} из ${worst.total}`);
     }
-    const NAMEW = 330, VALW = 220, DW = (W - PAD * 2 - NAMEW - VALW) / 3, RH = 74, HEADH = 64;
-    let H = 168 + 30 + HEADH + K.length * RH + 30;
+    const GAP = 20, CW = (W - PAD * 2 - GAP) / 2, CH = 200, rowsN = Math.ceil(K.length / 2);
+    let H = 168 + 30 + rowsN * (CH + GAP);
     if (pf.length) H += 70 + pf.length * 92;
     const tmp = canvas(10, 10).getContext("2d");
     const mainLines = main.map((m) => wrap(tmp, m, W - PAD * 2 - 40, 27));
@@ -124,28 +124,33 @@
     ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
     header(ctx, W, title, sub);
     let y = 168 + 30;
-    rr(ctx, PAD, y, W - PAD * 2, HEADH + K.length * RH, 16, C.card);
-    tableHead(ctx, W, PAD, y, HEADH);
-    text(ctx, "Показатель", PAD + 18, y + 41, 22, 700, "#fff");
-    text(ctx, "Значение", PAD + NAMEW + VALW - 14, y + 41, 22, 700, "#fff", "right");
-    ["к периоду", "к году", "LfL"].forEach((t, j) => text(ctx, t, PAD + NAMEW + VALW + (j + 1) * DW - 14, y + 41, 22, 700, "#fff", "right"));
-    y += HEADH;
     K.forEach(([t, note, v, ds, u, sc, nm], i) => {
-      if (i % 2) { ctx.fillStyle = "#f7f8fa"; ctx.fillRect(PAD, y, W - PAD * 2, RH); }
-      text(ctx, t, PAD + 18, note ? y + 34 : y + 46, 25, 600);
-      if (note) text(ctx, fit(ctx, note, NAMEW - 24, 19), PAD + 18, y + 60, 19, 400, C.muted);
-      const vx = PAD + NAMEW;
-      const vbg = nm ? NC(R(nm[0]), nm[1]) : null;
-      if (vbg) { ctx.fillStyle = vbg; ctx.fillRect(vx + 2, y + 4, VALW - 4, RH - 8); }
-      text(ctx, fit(ctx, v || "", VALW - 24, 26, 700), vx + VALW - 14, y + 47, 26, 700, C.text, "right");
-      ds.forEach((cid, j) => {
-        const x0 = PAD + NAMEW + VALW + j * DW, dv = cid ? R(cid) : null, bg = DC(dv, sc);
-        if (bg) { ctx.fillStyle = bg; ctx.fillRect(x0 + 2, y + 4, DW - 4, RH - 8); }
-        text(ctx, dv == null ? "—" : `${fmt(dv, 1, true)}${u}`, x0 + DW - 14, y + 47, 24, 400, dv == null ? C.muted : C.text, "right");
-      });
-      ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
-      y += RH;
+      const x = PAD + (i % 2) * (CW + GAP), yy = y + Math.floor(i / 2) * (CH + GAP);
+      const dvs = ds.map((cid) => (cid ? R(cid) : null));
+      const below = nm && R(nm[0]) != null && R(nm[0]) < nm[1];
+      const neg = dvs.some((d) => d != null && d <= -0.05);
+      const stripe = below || (!nm && neg) ? C.bad : nm || dvs.some((d) => d != null) ? C.good : C.line;
+      rr(ctx, x, yy, CW, CH, 18, C.card);
+      ctx.fillStyle = stripe; ctx.fillRect(x, yy + 14, 8, CH - 28);
+      text(ctx, fit(ctx, t, CW - 60, 25, 600), x + 30, yy + 42, 25, 600, C.text2);
+      const has = dvs.some((d) => d != null);
+      if (v) {
+        text(ctx, fit(ctx, v, CW - 60, 44, 700), x + 30, yy + 96, 44, 700, below ? C.bad : C.text);
+        if (note) { ctx.font = font(44, 700); const vw = Math.min(ctx.measureText(v).width, CW - 60); text(ctx, fit(ctx, note, CW - 76 - vw, 19), x + 42 + vw, yy + 94, 19, 400, below ? C.bad : C.muted); }
+      } else if (note) text(ctx, fit(ctx, note, CW - 60, 19), x + 30, yy + 70, 19, 400, C.muted);
+      const colW = (CW - 60) / 3;
+      if (has) {
+        ["к периоду", "к году", "LfL"].forEach((l, j) => {
+          const xx = x + 30 + j * colW, dv = dvs[j];
+          text(ctx, l, xx, yy + (v ? 132 : 104), 20, 400, C.muted);
+          if (dv == null) { text(ctx, "—", xx, yy + (v ? 172 : 160), 24, 400, C.muted); return; }
+          // стрелка ▲ рост / ▼ падение, цветом; около нуля — серым без стрелки
+          const zero = Math.abs(dv) < 0.05, fs = v ? 24 : 26;
+          text(ctx, fit(ctx, zero ? `0,0${u}` : deltaTxt(dv, u), colW - 8, fs, 700), xx, yy + (v ? 172 : 160), fs, 700, zero ? C.muted : dv > 0 ? C.good : C.bad);
+        });
+      } else if (!v) text(ctx, "нет данных", x + 30, yy + 140, 22, 400, C.muted);
     });
+    y += rowsN * (CH + GAP) - GAP;
     y += 30;
     if (pf.length) {
       text(ctx, "План / факт", PAD, y + 44, 30, 700); y += 70;
