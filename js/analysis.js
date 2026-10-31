@@ -174,7 +174,14 @@
     if (hasCol(e, "revenue")) e.sort((a, b) => b.revenue - a.revenue);
     // сколько оборота услуг не хватает до нормы доли услуг (услуги входят в оборот: (S + x) / (R + x) = норма)
     const sn = norms.srv_emp_min / 100;
+    // пустая ячейка у продавца с оборотом = 0 (не продал услуг / аксессуаров / комплектов), а не «нет данных»
+    const ZERO_IF_EMPTY = ["srv_sh", "srv_rev", "att", "compl", "acc_sh", "acc_rev"].filter((c) => hasCol(e, c));
     e = e.map((r) => {
+      if (isn(r.revenue) && r.revenue > 0) {
+        const z = {};
+        ZERO_IF_EMPTY.forEach((c) => { if (!isn(r[c])) z[c] = 0; });
+        if (Object.keys(z).length) r = Object.assign({}, r, z);
+      }
       const R = val(r, "revenue"), sh = val(r, "srv_sh");
       let S = val(r, "srv_rev");
       if (S == null && R != null && sh != null) S = (R * sh) / 100;
