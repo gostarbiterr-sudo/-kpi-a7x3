@@ -164,6 +164,7 @@
     const r = report.build(result, { app: true });
     const host = $("#report");
     host.innerHTML = `<style>${r.css}</style>${r.body}`;
+    addPicsTab(host);
     report.bind(host);
     document.title = r.title;
     $("#setup").hidden = true;
@@ -173,6 +174,58 @@
     window.scrollTo(0, 0);
     if (push) history.pushState({ report: 1 }, "");
   }
+  // ---- вкладка «Картинки»: отчёт в том же виде, что и картинки для рассылки
+  let picsSel = null, picsCache = {}, picsSeq = 0;
+  function picKinds() {
+    if (result.type === "contest") return [["csum", "Сводка", false], ["clist", { store: "Продавцы", asm: "Магазины", dsm: "ASM", company: "ASM" }[result.level], true]]
+      .filter(([k]) => k !== "clist" || result.level !== "store" || result.sellers.length);
+    if (result.type === "region") return [["region", "Регион — главное", true], ["stores", "Магазины — KPI", true]];
+    return [["store", "Магазин — главное", true], ["staff", "Продавцы — KPI", true]];
+  }
+  function addPicsTab(host) {
+    const tabs = host.querySelector(".tabs"), main = host.querySelector(".rep main");
+    if (!tabs || !main) return;
+    Object.values(picsCache).forEach((x) => URL.revokeObjectURL(x.url));
+    picsCache = {};
+    const contest = result.type === "contest";
+    const sel = contest ? [["p1", "План 1"], ["p2", "План 2"], ["p3", "План 3"]] : [["month", "Месяц"], ["week", "Неделя"], ["day", "День"]];
+    const rep = host.querySelector(".rep");
+    picsSel = contest ? "p1" : (rep && rep.dataset.period) || "month";
+    const btn = document.createElement("button");
+    btn.className = "tb"; btn.dataset.t = "pics"; btn.textContent = "🖼 Картинки";
+    tabs.children[0].after(btn);
+    const sec = document.createElement("section");
+    sec.className = "tab"; sec.dataset.tab = "pics";
+    sec.innerHTML = `<div class="pxbar">${sel.map(([v, t]) => `<button type="button" class="pxb" data-v="${v}">${t}</button>`).join("")}</div>` +
+      `<p class="muted">Так отчёт выглядит в картинках для рассылки. Нажмите на картинку, чтобы увеличить.</p><div class="pxlist"></div>`;
+    main.prepend(sec);
+    sec.querySelectorAll(".pxb").forEach((b) => (b.onclick = () => { picsSel = b.dataset.v; renderPics(sec); }));
+    btn.addEventListener("click", () => renderPics(sec));
+  }
+  async function renderPics(sec) {
+    sec.querySelectorAll(".pxb").forEach((b) => b.classList.toggle("on", b.dataset.v === picsSel));
+    const list = sec.querySelector(".pxlist"), seq = ++picsSeq, kinds = picKinds();
+    list.innerHTML = kinds.map(([, t]) => `<figure class="px"><figcaption>${esc(t)}</figcaption><div class="pxwait">Рисую…</div></figure>`).join("");
+    for (let i = 0; i < kinds.length; i++) {
+      const [k, t, dep] = kinds[i];
+      const ck = (dep ? picsSel : "-") + "|" + k;
+      try {
+        if (!picsCache[ck]) { const img = await KPI.share.makeImage(result, picsSel, k); img.url = URL.createObjectURL(img.blob); picsCache[ck] = img; }
+        if (seq !== picsSeq) return;
+        const img = picsCache[ck], fig = list.children[i];
+        fig.innerHTML = `<figcaption>${esc(t)}</figcaption><div class="pxwrap"><img src="${img.url}" alt="${esc(t)}"></div>` +
+          `<div class="pxact"><button type="button" class="pxs">↗ Отправить</button><button type="button" class="pxd">⬇ Сохранить</button></div>`;
+        fig.querySelector(".pxwrap").onclick = (e) => e.currentTarget.classList.toggle("zoom");
+        fig.querySelector(".pxs").onclick = () => shareFile(img.file);
+        fig.querySelector(".pxd").onclick = () => download(img.file);
+      } catch (e) { if (list.children[i]) list.children[i].innerHTML = `<figcaption>${esc(t)}</figcaption><p class="warn">Не удалось нарисовать: ${esc(e.message || e)}</p>`; console.error(e); }
+    }
+  }
+  function shareFile(f) {
+    if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f] }).catch(() => {});
+    else { download(f); toast("Отправка из браузера недоступна — картинка сохранена, приложите её в мессенджере"); }
+  }
+
   function backToSetup() {
     $("#report").hidden = true;
     $("#report").innerHTML = "";
@@ -240,13 +293,7 @@
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
-  function sendImage() {
-    if (!shImg) return;
-    const f = shImg.file;
-    if (navigator.canShare && navigator.canShare({ files: [f] })) {
-      navigator.share({ files: [f] }).catch(() => {});
-    } else { download(f); toast("Отправка из браузера недоступна — картинка сохранена, приложите её в мессенджере"); }
-  }
+  function sendImage() { if (shImg) shareFile(shImg.file); }
 
   // ---------------------------------------------------------------- планы
   let planObj = null, planPer = "month", draft = null;

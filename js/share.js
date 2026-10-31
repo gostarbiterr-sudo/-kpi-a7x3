@@ -73,7 +73,7 @@
   // ---------------------------------------------------------------- карточка магазина / региона
   function storeCard(res, p) {
     const P = res.periods[p], norms = res.norms, R = (c) => num((P.row || {})[c]);
-    const W = 1080, PAD = 48, GAP = 20, CW = (W - PAD * 2 - GAP) / 2, CH = 182;
+    const W = 1080, PAD = 40;
     const region = res.type === "region", info = res.info || {};
     const title = region ? res.name : [res.code, info["Город"], info["ТЦ"]].filter(Boolean).join(" · ");
     const d = P.date_kpi || P.date_emp;
@@ -84,64 +84,69 @@
       wrap(ctx, P.notes[0] || "Нет данных за этот период.", W - PAD * 2, 30).forEach((l, i) => text(ctx, l, PAD, 250 + i * 40, 30, 400, C.text2));
       footer(ctx, W, 395); return c;
     }
-    // карточки показателей
-    const anyNeg = (ids) => ids.map(R).some((x) => x != null && x < 0);
-    const tri = (a, b, c, u) => [["к периоду", R(a)], ["к году", R(b)], ["LfL", R(c)]].filter((x) => x[1] != null).map(([l, v]) => [l, v, u]);
-    const cards = [];
-    cards.push({ t: "Оборот", v: money(R("revenue")), d: tri("rev_p", "rev_y", "rev_l", "%"), st: anyNeg(["rev_p", "rev_y", "rev_l"]) ? "bad" : "good" });
-    cards.push({ t: "Конверсия офлайн", v: `${fmt(R("conv"), 1)}%`, d: tri("conv_p", "conv_y", "conv_l", " п.п."), st: anyNeg(["conv_p", "conv_y", "conv_l"]) ? "bad" : "good" });
-    cards.push({ t: "Средний чек", v: money(R("avg")), d: tri("avg_p", "avg_y", "avg_l", "%"), st: null });
-    cards.push({ t: "Трафик офлайн", v: fmt(R("traffic"), 0), d: tri("tr_p", "tr_y", "tr_l", "%"), st: null });
-    for (const [t, cid, k] of [["Аттач аксессуаров", "acc_att", "attach_min"], ["Доля услуг", "srv_sh", "srv_share_min"], ["ЧДУ", "chdu", "chdu_min"]]) {
-      const v = R(cid);
-      if (v != null) cards.push({ t, v: `${fmt(v, 1)}%`, note: `норма ${fmt(norms[k], 1)}%${v < norms[k] ? ` · не хватает ${fmt(norms[k] - v, 1)} п.п.` : ""}`, st: v >= norms[k] ? "good" : "bad" });
-    }
-    const ev = ["eff_p", "eff_y", "eff_l"].map(R).filter((x) => x != null);
-    if (ev.length) cards.push({ t: "Эффективность", v: `${fmt(Math.min(...ev), 1, true)} п.п.`, note: "худшая из период / год / LfL", st: Math.min(...ev) >= 0 ? "good" : "bad" });
+    // таблица обязательных KPI: значение и прирост к периоду / году / LfL
+    const DC = (v, sc) => (v == null ? null : v < 0 ? scaleColor(0.45 * (1 - Math.min(1, -v / sc))) : scaleColor(0.65 + 0.35 * Math.min(1, v / sc)));
+    const NC = (v, n) => (v == null || n == null ? null : v >= n ? scaleColor(0.85) : scaleColor(0.1));
+    const pct1 = (v) => (v == null ? "—" : `${fmt(v, 1)}%`);
+    // [название, подпись, значение, [к периоду, к году, LfL], единица прироста, шкала цвета, норма]
+    const K = [
+      ["Оборот", "", money(R("revenue")), ["rev_p", "rev_y", "rev_l"], "%", 10],
+      ["Трафик офлайн", "", R("traffic") != null ? fmt(R("traffic"), 0) : "—", ["tr_p", "tr_y", "tr_l"], "%", 10],
+      ["Конверсия офлайн", "", pct1(R("conv")), ["conv_p", "conv_y", "conv_l"], " пп", 1.5],
+      ["Эффективность", "прирост оборота − трафика", "", ["eff_p", "eff_y", "eff_l"], " пп", 10],
+      ["Средний чек", "", money(R("avg")), ["avg_p", "avg_y", "avg_l"], "%", 10],
+      ["Оборот аксессуаров", "", money(R("acc_rev")), ["acc_rev_p", "acc_rev_y", "acc_rev_l"], "%", 10],
+      ["Аттач аксессуаров", `норма ≥ ${fmt(norms.attach_min, 0)}%`, pct1(R("acc_att")), ["acc_att_p", "acc_att_y", null], " пп", 2, ["acc_att", norms.attach_min]],
+      ["Доля аксессуаров", "", pct1(R("acc_sh")), ["acc_sh_p", "acc_sh_y", null], " пп", 1],
+      ["Оборот услуг", "", money(R("srv_rev")), ["srv_rev_p", "srv_rev_y", "srv_rev_l"], "%", 10],
+      ["Доля услуг", `норма ≥ ${fmt(norms.srv_share_min, 1)}%`, pct1(R("srv_sh")), ["srv_sh_p", "srv_sh_y", null], " пп", 1, ["srv_sh", norms.srv_share_min]],
+      ["ЧДУ", `без Е-ком и B2B · норма ≥ ${fmt(norms.chdu_min, 0)}%`, pct1(R("chdu")), [null, null, null], " пп", 1, ["chdu", norms.chdu_min]],
+    ].filter((k) => k[3].some((c) => c && R(c) != null) || (k[2] && k[2] !== "—"));
     // план
     const pf = (P.planFact || []).filter((t) => t.status !== "na");
-    // главное
+    // главное: только проблемы, коротко
     const fails = P.checks.filter((c) => !c.ok);
     const groups = [];
     fails.forEach((c) => { if (!groups.some((g) => g.group === c.group)) groups.push(c); });
-    const okGroups = [...new Set(P.checks.map((c) => c.group))].filter((g) => !fails.some((c) => c.group === g));
-    const GN = KPI.analysis.GROUP_NAME;
-    const main = groups.slice(0, 5).map((c) => ({ st: "bad", s: `${c.label.replace(" (худший из периода/года/LfL)", "")}: ${c.text}` }));
-    if (!pf.length) { /* план не задан — в «Главном» только нормы */ }
-    if (okGroups.length) main.push({ st: "good", s: "В норме: " + okGroups.map((g) => GN[g]).join(", ") });
+    const main = groups.slice(0, 5).map((c) => `${c.label.replace(" (худший из периода/года/LfL)", "")}: ${c.text}`);
     if (region && P.failCounts) {
       const worst = P.failCounts.filter((f) => f.n).sort((a, b) => b.n - a.n)[0];
-      if (worst) main.push({ st: "bad", s: `Магазины: ${worst.label} — ${worst.n} из ${worst.total}` });
+      if (worst) main.push(`Магазины: ${worst.label} — ${worst.n} из ${worst.total}`);
     }
-    // высота
-    const rows = Math.ceil(cards.length / 2);
-    let H = 168 + 36 + rows * (CH + GAP) + 10;
+    const NAMEW = 330, VALW = 220, DW = (W - PAD * 2 - NAMEW - VALW) / 3, RH = 74, HEADH = 64;
+    let H = 168 + 30 + HEADH + K.length * RH + 30;
     if (pf.length) H += 70 + pf.length * 92;
     const tmp = canvas(10, 10).getContext("2d");
-    const mainLines = main.map((m) => wrap(tmp, m.s, W - PAD * 2 - 70, 28));
-    H += 70 + mainLines.reduce((a, l) => a + l.length * 38 + 16, 0) + 70;
+    const mainLines = main.map((m) => wrap(tmp, m, W - PAD * 2 - 40, 27));
+    if (main.length) H += 66 + mainLines.reduce((a, l) => a + l.length * 37 + 12, 0);
+    H += 70;
     const c = canvas(W, H), ctx = c.getContext("2d");
     ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
-    const ok = P.checks.filter((x) => x.ok).length;
-    header(ctx, W, title, sub, P.checks.length ? { text: `норм ${ok} из ${P.checks.length}`, st: ok === P.checks.length ? "good" : ok / P.checks.length >= 0.6 ? "warn" : "bad" } : null);
-    let y = 168 + 36;
-    cards.forEach((k, i) => {
-      const x = PAD + (i % 2) * (CW + GAP), yy = y + Math.floor(i / 2) * (CH + GAP);
-      rr(ctx, x, yy, CW, CH, 18, C.card);
-      ctx.fillStyle = stColor(k.st); ctx.fillRect(x, yy + 14, 8, CH - 28);
-      text(ctx, k.t, x + 30, yy + 44, 26, 600, C.text2);
-      if (k.st) badge(ctx, x + CW - 52, yy + 18, k.st, 32);
-      text(ctx, fit(ctx, k.v, CW - 60, 44, 700), x + 30, yy + 96, 44, 700);
-      if (k.d && k.d.length) {
-        const colW = (CW - 60) / 3;
-        k.d.forEach(([l, v, u], j) => {
-          const xx = x + 30 + j * colW;
-          text(ctx, l, xx, yy + 136, 21, 400, C.muted);
-          text(ctx, fit(ctx, deltaTxt(v, u), colW - 4, 22, 700), xx, yy + 165, 22, 700, v >= 0 ? C.good : C.bad);
-        });
-      } else if (k.note) wrap(ctx, k.note, CW - 60, 22).slice(0, 2).forEach((l, j) => text(ctx, l, x + 30, yy + 146 + j * 28, 22, 400, k.st === "bad" ? C.bad : C.muted));
+    header(ctx, W, title, sub);
+    let y = 168 + 30;
+    rr(ctx, PAD, y, W - PAD * 2, HEADH + K.length * RH, 16, C.card);
+    tableHead(ctx, W, PAD, y, HEADH);
+    text(ctx, "Показатель", PAD + 18, y + 41, 22, 700, "#fff");
+    text(ctx, "Значение", PAD + NAMEW + VALW - 14, y + 41, 22, 700, "#fff", "right");
+    ["к периоду", "к году", "LfL"].forEach((t, j) => text(ctx, t, PAD + NAMEW + VALW + (j + 1) * DW - 14, y + 41, 22, 700, "#fff", "right"));
+    y += HEADH;
+    K.forEach(([t, note, v, ds, u, sc, nm], i) => {
+      if (i % 2) { ctx.fillStyle = "#f7f8fa"; ctx.fillRect(PAD, y, W - PAD * 2, RH); }
+      text(ctx, t, PAD + 18, note ? y + 34 : y + 46, 25, 600);
+      if (note) text(ctx, fit(ctx, note, NAMEW - 24, 19), PAD + 18, y + 60, 19, 400, C.muted);
+      const vx = PAD + NAMEW;
+      const vbg = nm ? NC(R(nm[0]), nm[1]) : null;
+      if (vbg) { ctx.fillStyle = vbg; ctx.fillRect(vx + 2, y + 4, VALW - 4, RH - 8); }
+      text(ctx, fit(ctx, v || "", VALW - 24, 26, 700), vx + VALW - 14, y + 47, 26, 700, C.text, "right");
+      ds.forEach((cid, j) => {
+        const x0 = PAD + NAMEW + VALW + j * DW, dv = cid ? R(cid) : null, bg = DC(dv, sc);
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(x0 + 2, y + 4, DW - 4, RH - 8); }
+        text(ctx, dv == null ? "—" : `${fmt(dv, 1, true)}${u}`, x0 + DW - 14, y + 47, 24, 400, dv == null ? C.muted : C.text, "right");
+      });
+      ctx.fillStyle = C.line; ctx.fillRect(PAD, y + RH - 1, W - PAD * 2, 1);
+      y += RH;
     });
-    y += rows * (CH + GAP) + 10;
+    y += 30;
     if (pf.length) {
       text(ctx, "План / факт", PAD, y + 44, 30, 700); y += 70;
       pf.forEach((t) => {
@@ -157,12 +162,14 @@
         y += 92;
       });
     }
-    text(ctx, "Главное", PAD, y + 44, 30, 700); y += 70;
-    main.forEach((m, i) => {
-      badge(ctx, PAD, y + 2, m.st, 34);
-      mainLines[i].forEach((l, j) => text(ctx, l, PAD + 54, y + 28 + j * 38, 28, 400, C.text));
-      y += mainLines[i].length * 38 + 16;
-    });
+    if (main.length) {
+      text(ctx, "На что обратить внимание", PAD, y + 40, 29, 700); y += 66;
+      main.forEach((m, i) => {
+        ctx.beginPath(); ctx.arc(PAD + 9, y + 18, 7, 0, Math.PI * 2); ctx.fillStyle = C.bad; ctx.fill();
+        mainLines[i].forEach((l, j) => text(ctx, l, PAD + 32, y + 27 + j * 37, 27, 400, C.text));
+        y += mainLines[i].length * 37 + 12;
+      });
+    }
     footer(ctx, W, H - 28);
     return c;
   }
