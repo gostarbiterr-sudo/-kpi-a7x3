@@ -101,7 +101,7 @@
   const planOpts = () => ({ includeDay: store.get("kpi_inc_day", true) });
 
   function compute(obj) {
-    if (obj.type === "month") return KPI.monthAn.analyze(loaded.month, obj.sel, norms());
+    if (obj.type === "month") return obj.sel.level === "multi" ? KPI.monthAn.analyzeMulti(loaded.month, obj.sel.codes, norms()) : KPI.monthAn.analyze(loaded.month, obj.sel, norms());
     return obj.type === "store" ? analysis.analyze(loaded, obj.code, norms(), plans(), planOpts())
       : analysis.analyzeRegion(loaded, obj.name, norms(), plans(), planOpts());
   }
@@ -137,14 +137,26 @@
   }
   function runMonth(useCode, codeArg) {
     if (!loaded || !loaded.month) return;
-    const box = $("#choices"); box.innerHTML = "";
+    const M = loaded.month, box = $("#choices"); box.innerHTML = "";
     if (useCode) {
-      const q = (codeArg || $("#mCode").value).trim();
-      if (!q) { toast("Впишите код магазина"); return; }
-      const found = KPI.month.findStore(loaded.month, q);
+      const raw = (codeArg || $("#mCode").value).trim();
+      if (!raw) { toast("Впишите код магазина"); return; }
+      const parts = raw.split(/[,;\s]+/).filter(Boolean);
+      if (parts.length > 1) {              // несколько магазинов
+        const codes = [], miss = [];
+        for (const q of parts) { const f = KPI.month.findStore(M, q); const ex = f.find((c) => c === q.toUpperCase().replace(/^А/, "A").replace(/^С/, "S")); const c = ex || (f.length === 1 ? f[0] : null); if (c) { if (!codes.includes(c)) codes.push(c); } else miss.push(q); }
+        if (miss.length) box.innerHTML = `<p class="warn">Не найдены или неоднозначны: ${esc(miss.join(", "))}. Впишите коды точнее.</p>`;
+        if (!codes.length) return;
+        if (codes.length === 1) { open({ type: "month", sel: { level: "store", code: codes[0] } }); return; }
+        store.set("kpi_last_mcode", codes.join(", "));
+        open({ type: "month", sel: { level: "multi", codes } });
+        return;
+      }
+      const q = parts[0];
+      const found = KPI.month.findStore(M, q);
       if (!found.length) { box.innerHTML = `<p class="warn">Магазин «${esc(q)}» не найден в отчётах за месяц.</p>`; return; }
       if (found.length > 1 && !codeArg) {
-        box.innerHTML = '<p class="muted">Найдено несколько магазинов — выберите:</p>' + found.slice(0, 40).map((c) => { const a = KPI.month.attrs(loaded.month, c); return `<button class="choice" data-c="${esc(c)}"><b>${esc(c)}</b> ${esc([a.city, a.asm].filter(Boolean).join(" · "))}</button>`; }).join("");
+        box.innerHTML = '<p class="muted">Найдено несколько магазинов — выберите:</p>' + found.slice(0, 40).map((c) => { const a = KPI.month.attrs(M, c); return `<button class="choice" data-c="${esc(c)}"><b>${esc(c)}</b> ${esc([a.city, a.asm].filter(Boolean).join(" · "))}</button>`; }).join("");
         box.querySelectorAll(".choice").forEach((b) => (b.onclick = () => runMonth(true, b.dataset.c)));
         return;
       }
@@ -158,6 +170,25 @@
     store.set("kpi_last_mlevel", v);
     open({ type: "month", sel: { level: v.slice(0, i), name: v.slice(i + 1) } });
   }
+  // ---- выбор нескольких магазинов из списка
+  const pickSel = new Set();
+  function renderPick() {
+    const M = loaded && loaded.month; if (!M) return;
+    const f = KPI.month.key($("#mFilter").value);
+    const by = {};
+    for (const c of [...KPI.month.liveCodes(M)].sort()) {
+      const a = KPI.month.attrs(M, c);
+      if (f && !KPI.month.key(c + " " + a.city + " " + a.asm).includes(f)) continue;
+      (by[a.asm || "Без ASM"] = by[a.asm || "Без ASM"] || []).push([c, a.city]);
+    }
+    $("#mList").innerHTML = Object.keys(by).sort((x, y) => x.localeCompare(y, "ru")).map((g) => `<h4>${esc(g)} <button type="button" class="ghost" data-all="${esc(g)}">все</button></h4>` +
+      by[g].map(([c, city]) => `<label><input type="checkbox" value="${esc(c)}"${pickSel.has(c) ? " checked" : ""}><b>${esc(c)}</b> <small>${esc(city)}</small></label>`).join("")).join("") || '<p class="muted">Ничего не найдено.</p>';
+    $("#mList").querySelectorAll("input").forEach((x) => (x.onchange = () => { x.checked ? pickSel.add(x.value) : pickSel.delete(x.value); syncPick(); }));
+    $("#mList").querySelectorAll("button[data-all]").forEach((btn) => (btn.onclick = () => { by[btn.dataset.all].forEach(([c]) => pickSel.add(c)); renderPick(); syncPick(); }));
+  }
+  function syncPick() {
+    $("#mGo").textContent = `Показать выбранные (${pickSel.size})`;
+  }
   // ---- презентация (.pptx) по итогам месяца
   let pptBusy = false;
   async function pptFile() {
@@ -166,7 +197,7 @@
     return new File([blob], `itogi_${KPI.month.MONTHS[result.Mo]}_${result.Y}_${id}.pptx`, { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
   }
   async function presentation(share) {
-    if (pptBusy || !result || result.type !== "month") return;
+    if (pptBusy || !result || (result.type !== "month" && result.type !== "monthMulti")) return;
     pptBusy = true; setBusy("Собираю презентацию…");
     try {
       const f = await pptFile();
@@ -186,14 +217,14 @@
     const r = report.build(result, { app: true });
     const host = $("#report");
     host.innerHTML = `<style>${r.css}</style>${r.body}`;
-    if (result.type !== "month") addPicsTab(host);
+    if (result.type !== "month" && result.type !== "monthMulti") addPicsTab(host);
     report.bind(host);
     document.title = r.title;
     $("#setup").hidden = true;
     host.hidden = false;
     $("#bar").hidden = false;
-    $("#plansBtn").hidden = result.type === "month";
-    $("#pptBtn").hidden = result.type !== "month";
+    $("#plansBtn").hidden = result.type === "month" || result.type === "monthMulti";
+    $("#pptBtn").hidden = result.type !== "month" && result.type !== "monthMulti";
     window.scrollTo(0, 0);
     if (push) history.pushState({ report: 1 }, "");
   }
@@ -259,7 +290,7 @@
     const html = report.standalone(result);
     const d = new Date();
     const id = String(result.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
-    const name = `${result.type === "month" ? "itogi_mesyaca" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
+    const name = `${result.type === "month" || result.type === "monthMulti" ? "itogi_mesyaca" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
     return new File([html], name, { type: "text/html" });
   }
   function save() { download(reportFile()); }
@@ -405,12 +436,24 @@
     $("#goR").onclick = runRegion;
     $("#goM").onclick = () => runMonth(false);
     $("#goMS").onclick = () => runMonth(true);
+    $("#mPickBtn").onclick = () => {
+      const p = $("#mPick"); p.hidden = !p.hidden;
+      if (!p.hidden) { pickSel.clear(); const live = KPI.month.liveCodes(loaded.month); store.get("kpi_last_mmulti", []).forEach((c) => { if (live.has(c)) pickSel.add(c); }); renderPick(); syncPick(); }
+    };
+    $("#mFilter").addEventListener("input", renderPick);
+    $("#mNone").onclick = () => { pickSel.clear(); renderPick(); syncPick(); };
+    $("#mGo").onclick = () => {
+      if (pickSel.size < 2) { toast("Отметьте хотя бы два магазина"); return; }
+      const codes = [...pickSel].sort();
+      store.set("kpi_last_mmulti", codes);
+      open({ type: "month", sel: { level: "multi", codes } });
+    };
     $("#mCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runMonth(true); });
     $("#pptBtn").onclick = () => presentation(false);
     $("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
     $("#back").onclick = () => history.back();
     $("#save").onclick = save;
-    $("#share").onclick = () => (result && result.type === "month" ? presentation(true) : openShare());
+    $("#share").onclick = () => (result && (result.type === "month" || result.type === "monthMulti") ? presentation(true) : openShare());
     document.querySelectorAll("#shPer button").forEach((b) => (b.onclick = () => { shPer = b.dataset.p; renderShare(); }));
     document.querySelectorAll("#shKind button").forEach((b) => (b.onclick = () => { shKind = b.dataset.k; renderShare(); }));
     $("#shSend").onclick = sendImage;

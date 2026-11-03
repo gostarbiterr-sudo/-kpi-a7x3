@@ -106,6 +106,13 @@
       const a = MM.attrs(M, sel.code); res.attrs = a;
       res.name = `Магазин ${sel.code}`; res.sub = [a.city, a.asm ? `ASM ${a.asm}` : "", a.dsm].filter(Boolean).join(" · ");
       res.bench = a.asm ? { level: "asm", name: a.asm, codes: MM.codesFor(M, { level: "asm", name: a.asm }) } : null;
+    } else if (sel.level === "group") {
+      res.code = codes.length <= 4 ? codes.join("_") : `${codes.slice(0, 3).join("_")}_i_dr`;
+      res.name = codes.length <= 4 ? `Магазины ${codes.join(", ")}` : `Магазины ${codes.slice(0, 3).join(", ")} и ещё ${codes.length - 3}`;
+      const asms = [...new Set(codes.map((c) => MM.attrs(M, c).asm).filter(Boolean))], dsms = [...new Set(codes.map((c) => MM.attrs(M, c).dsm).filter(Boolean))];
+      res.sub = `выбрано магазинов: ${codes.length}${asms.length ? " · " + asms.join(", ") : ""}`;
+      res.bench = asms.length === 1 ? { level: "asm", name: asms[0], codes: MM.codesFor(M, { level: "asm", name: asms[0] }) }
+        : dsms.length === 1 ? { level: "dsm", name: dsms[0], codes: MM.codesFor(M, { level: "dsm", name: dsms[0] }) } : null;
     } else {
       res.name = sel.name; res.sub = sel.level === "asm" ? `ASM · магазинов ${codes.length}` : sel.level === "dsm" ? `Дивизион · магазинов ${codes.length}` : `магазинов ${codes.length}`;
       const d = codes.length ? MM.attrs(M, codes[0]).dsm : "";
@@ -302,7 +309,7 @@
       if (isn(av.dPy) && av.dPy < -2 && dec) B("Средний чек", `Средний чек ${fmt(cur.avg, 0)} ₽ (${pctS(av.dPy)} к прошлому году): ${Math.abs(dec.price) > Math.abs(dec.upt) ? "в основном из-за средней цены" : "в основном из-за штук в чеке"} (цена ${pctS(row("price").dPy)}, штуки в чеке ${pctS(row("upt").dPy)}).`);
       const pl = row("planPct");
       if (isn(cur.srvSh) && cur.srvSh < res.norms.srv_share_min) B("Услуги", `Доля услуг ${fmt(cur.srvSh, 1)}% — ниже нормы ${fmt(res.norms.srv_share_min, 1)}%.`);
-      if (res.benchCur && isn(res.benchCur.conv) && isn(cur.conv) && res.level === "store") {
+      if (res.benchCur && isn(res.benchCur.conv) && isn(cur.conv) && (res.level === "store" || res.level === "group")) {
         const d = cur.conv - res.benchCur.conv;
         if (d < -1) B("Сравнение с регионом", `Конверсия на ${fmt(-d, 1)} п.п. ниже, чем в среднем по ${res.bench.name} (${fmt(res.benchCur.conv, 1)}%).`);
         else if (d > 1) G_("Сравнение с регионом", `Конверсия на ${fmt(d, 1)} п.п. выше, чем в среднем по ${res.bench.name}.`);
@@ -315,7 +322,7 @@
       if (isn(g.dPrevPct) && g.dPrevPct < -0.3) { B("Гросс-маржа", `${t}: маржинальность ${ppS(g.dPrevPct)} к прошлому месяцу${isn(g.dPrevGm) ? `, в рублях ${pctS(g.dPrevGm)}` : ""}.`);
         A("Средний", "Гросс-маржа", "Проверить скидки и продажи ниже рекомендованной цены, сместить продажи в маржинальные категории и аксессуары, услуги.", `Маржинальность ${ppS(g.dPrevPct)} к прошлому месяцу.`); }
       else G_("Гросс-маржа", `${t}${isn(g.dPrevPct) ? `, к прошлому месяцу ${ppS(g.dPrevPct)}` : ""}.`);
-      if (isn(g.benchPct) && res.level === "store" && g.month.pct < g.benchPct - 1) B("Гросс-маржа", `Маржинальность на ${fmt(g.benchPct - g.month.pct, 1)} п.п. ниже средней по ${res.bench.name} (${fmt(g.benchPct, 1)}%).`);
+      if (isn(g.benchPct) && (res.level === "store" || res.level === "group") && g.month.pct < g.benchPct - 1) B("Гросс-маржа", `Маржинальность на ${fmt(g.benchPct - g.month.pct, 1)} п.п. ниже средней по ${res.bench.name} (${fmt(g.benchPct, 1)}%).`);
     }
     if (res.ggroups && res.ggroups.neg.length) {
       const n = res.ggroups.neg.slice(0, 3).map((x) => `${x.name} (${rubS(x.gm)})`).join(", ");
@@ -343,7 +350,7 @@
         A("Средний", "Аксессуары", `Комплексная продажа в «${dn[0].name}»: аксессуар к каждому основному товару, выкладка у товара, мотивация на аттач.`, `«${dn[0].name}» ${rubS(dn[0].d, true)} по аксессуарам к прошлому году.`);
       }
       const bn = res.accBench && res.accBench.t;
-      if (bn && isn(bn.sh) && isn(t.sh) && res.level === "store" && t.sh < bn.sh - 0.5) B("Аксессуары", `Доля аксессуаров на ${fmt(bn.sh - t.sh, 1)} п.п. ниже средней по ${res.bench.name} (${fmt(bn.sh, 1)}%).`);
+      if (bn && isn(bn.sh) && isn(t.sh) && (res.level === "store" || res.level === "group") && t.sh < bn.sh - 0.5) B("Аксессуары", `Доля аксессуаров на ${fmt(bn.sh - t.sh, 1)} п.п. ниже средней по ${res.bench.name} (${fmt(bn.sh, 1)}%).`);
     }
     // сервисы
     if (res.srv) {
@@ -383,5 +390,37 @@
     res.good = good; res.bad = bad; res.actions = act;
   }
 
-  KPI.monthAn = { analyze, histPeriod, rubS, pctS, ppS, KPI_ROWS };
+  // несколько магазинов: каждый считается отдельно, без суммирования
+  function analyzeMulti(M, codes, norms) {
+    const list = codes.map((c) => analyze(M, { level: "store", code: c }, norms));
+    const MM = M_(), mName = MM.MONTHS[M.Mo];
+    return { type: "monthMulti", level: "multi", sel: { level: "multi", codes }, list, M, Y: M.Y, Mo: M.Mo, norms: list[0] ? list[0].norms : norms,
+      code: codes.length <= 4 ? codes.join("_") : `${codes.slice(0, 3).join("_")}_i_dr`,
+      name: codes.length <= 4 ? `Магазины ${codes.join(", ")}` : `Магазины ${codes.slice(0, 3).join(", ")} и ещё ${codes.length - 3}`,
+      sub: `магазинов: ${codes.length} · результаты каждого магазина отдельно`, monthLabel: `${mName[0].toUpperCase() + mName.slice(1)} ${M.Y}`, prevLabel: MM.MONTHS[(M.Mo + 11) % 12] };
+  }
+  // строки показателей для вида «магазины рядом»: [название, (res) => {v: текст, d: [[подпись, изменение, единица]]}]
+  function multiRows(kind) {
+    const row = (r, k) => (r.kpi || []).find((x) => x.k === k);
+    const kp = (k, f) => (r) => { const x = row(r, k); if (!x || (x.cur == null && x.type !== "eff")) return null;
+      return { v: f(x), d: x.type === "eff" ? [["к прошл. мес.", x.dPrev, " п.п."], ["с начала года", x.dYtd, " п.п."]] : [["к прошл. мес.", x.dPrev, x.type === "pct" ? " п.п." : "%"], ["к прошл. году", x.dPy, x.type === "pct" ? " п.п." : "%"]] }; };
+    const money = (v) => rubS(v);
+    if (kind === "kpi") return [
+      ["Оборот", kp("rev", (x) => money(x.cur))], ["Трафик", kp("traffic", (x) => fmt(x.cur, 0))], ["Конверсия", kp("conv", (x) => `${fmt(x.cur, 1)}%`)],
+      ["Эффективность", kp("eff", (x) => (isn(x.dPy) ? `${fmt(x.dPy, 1, true)}%` : "—"))], ["Средний чек", kp("avg", (x) => `${fmt(x.cur, 0)} ₽`)],
+      ["Средняя цена", kp("price", (x) => `${fmt(x.cur, 0)} ₽`)], ["Штук в чеке", kp("upt", (x) => fmt(x.cur, 2))]];
+    if (kind === "mix") return [
+      ["Гросс-маржа", (r) => (r.gross && r.gross.month ? { v: `${fmt(r.gross.month.pct, 1)}% · ${rubS(r.gross.month.gm)}`, d: [["к прошл. мес.", r.gross.dPrevPct, " п.п."], ["гросс, ₽", r.gross.dPrevGm, "%"]] } : null)],
+      ["Оборот аксессуаров", (r) => (r.acc ? { v: rubS(r.acc.t.acc), d: [["к прошл. году", r.acc.t.yoy, "%"]] } : null)],
+      ["Доля аксессуаров", (r) => (r.acc ? { v: `${fmt(r.acc.t.sh, 1)}%`, d: [["к прошл. году", r.acc.t.dSh, " п.п."]] } : kp("accSh", (x) => `${fmt(x.cur, 1)}%`)(r))],
+      ["Аттач (розница)", (r) => (r.acc && isn(r.acc.t.att) ? { v: `${fmt(r.acc.t.att, 1)}%`, d: [["к прошл. году", r.acc.t.dAtt, " п.п."]] } : null)],
+      ["Оборот услуг", (r) => (r.srv ? { v: rubS(r.srv.t.srv), d: [["к прошл. году", r.srv.t.yoy, "%"]] } : null)],
+      ["Доля услуг", (r) => (r.srv ? { v: `${fmt(r.srv.t.sh, 1)}%`, d: [["к прошл. году", r.srv.t.dSh, " п.п."]] } : kp("srvSh", (x) => `${fmt(x.cur, 1)}%`)(r))],
+      ["ЧДУ", (r) => (r.types && isn(r.types.chdu) ? { v: `${fmt(r.types.chdu, 1)}%`, d: [[`к норме ${fmt(r.norms.chdu_min, 0)}%`, r.types.chdu - r.norms.chdu_min, " п.п."]] } : null)]];
+    if (kind === "dec") return [["Трафик", "traffic"], ["Конверсия", "conv"], ["Средняя цена", "price"], ["Штуки в чеке", "upt"], ["Итого", "dR"]].map(([l, k]) =>
+      [l, (r) => (r.decPy ? { v: rubS(r.decPy[k], true), sign: r.decPy[k], d: [] } : null)]);
+    return [];
+  }
+
+  KPI.monthAn = { analyze, analyzeMulti, multiRows, histPeriod, rubS, pctS, ppS, KPI_ROWS };
 })(typeof globalThis !== "undefined" ? globalThis : this);

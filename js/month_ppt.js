@@ -295,5 +295,101 @@
     return pres.write({ outputType: browser ? "blob" : "nodebuffer", compression: true });
   }
 
-  KPI.monthPpt = { build };
+  // ---------------------------------------------------------------- несколько магазинов: результаты рядом
+  function mTable(sl, rows, stores, y) {
+    const n = stores.length, lw = 2.3, cw = (W - 2 * M - lw) / n;
+    const head = [{ text: "Показатель", options: { bold: true, color: C.white, fill: { color: C.navy }, fontSize: 12 } }].concat(stores.map((r) => ({
+      text: [{ text: r.code, options: { bold: true, breakLine: true } }, { text: r.attrs ? r.attrs.city : "", options: { fontSize: 10, color: "CADCFC" } }], options: { color: C.white, fill: { color: C.navy }, fontSize: 13 } })));
+    const body = [];
+    rows.forEach(([label, f]) => {
+      const cells = stores.map((r) => f(r));
+      if (cells.every((c) => !c)) return;
+      body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: 12, fill: { color: body.length % 2 ? "F8FAFC" : C.white } } }].concat(cells.map((c) => {
+        const fill = { color: body.length % 2 ? "F8FAFC" : C.white };
+        if (!c) return { text: "—", options: { color: C.muted, fill } };
+        const t = [{ text: c.v, options: { bold: true, fontSize: 15, color: c.sign != null ? (c.sign >= 0 ? C.good : C.bad) : C.ink, breakLine: c.d.length > 0 } }];
+        c.d.forEach(([l, v, u], i) => { t.push({ text: arrow(v, u) + " ", options: { bold: true, fontSize: 10.5, color: colorOf(v) } }); t.push({ text: l, options: { fontSize: 10, color: C.muted, breakLine: i < c.d.length - 1 } }); });
+        return { text: t, options: { fill } };
+      })));
+    });
+    const rh = Math.min(0.78, (H - y - 0.7) / Math.max(1, body.length + 1));
+    sl.addTable([head].concat(body), { x: M, y, colW: [lw].concat(stores.map(() => cw)), fontFace: FONT, border: { type: "solid", pt: 0.5, color: C.line }, rowH: rh, valign: "middle", margin: [0.04, 0.1, 0.04, 0.1], autoPage: false });
+  }
+  function mCols(pres, sl, stores, y, fn, dark) {
+    const n = stores.length, gap = 0.25, cw = (W - 2 * M - gap * (n - 1)) / n;
+    stores.forEach((r, i) => {
+      const x = M + i * (cw + gap);
+      card(pres, sl, x, y, cw, H - y - 0.65, dark ? "2B4A7E" : C.card);
+      txt(sl, [{ text: r.code + "  ", options: { bold: true } }, { text: r.attrs ? r.attrs.city : "", options: { color: dark ? "CADCFC" : C.muted, fontSize: 12 } }], x + 0.2, y + 0.15, cw - 0.4, 0.35, { fontSize: 16, color: dark ? C.white : C.navy });
+      fn(r, x + 0.2, y + 0.6, cw - 0.4, H - y - 1.35);
+    });
+  }
+  async function buildMulti(R) {
+    const P = await lib();
+    const pres = new P();
+    pres.layout = "LAYOUT_WIDE";
+    pres.title = `Итоги: ${R.monthLabel} — ${R.name}`;
+    pres.author = "Анализ KPI";
+    const MG = KPI.month.MONTHS_GEN[R.Mo];
+    { const sl = pres.addSlide(); sl.background = { color: C.white };
+      txt(sl, `Итоги ${MG} ${R.Y}`, M, 1.0, W - 2 * M, 0.9, { fontSize: 44, bold: true, color: C.navy });
+      txt(sl, "Результаты магазинов", M, 1.95, W - 2 * M, 0.6, { fontSize: 28, color: C.ink });
+      const L = R.list, cols = Math.min(4, L.length), cw = (W - 2 * M - 0.25 * (cols - 1)) / cols;
+      L.slice(0, 12).forEach((r, i) => {
+        const x = M + (i % cols) * (cw + 0.25), y = 3.0 + Math.floor(i / cols) * 1.15;
+        card(pres, sl, x, y, cw, 0.95, C.card);
+        txt(sl, r.code, x + 0.2, y + 0.12, cw - 0.4, 0.4, { fontSize: 18, bold: true, color: C.navy });
+        txt(sl, r.attrs ? [r.attrs.city, r.attrs.asm].filter(Boolean).join(" · ") : "", x + 0.2, y + 0.52, cw - 0.4, 0.3, { fontSize: 12, color: C.muted });
+      });
+      const d = new Date();
+      txt(sl, `Сформировано ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`, M, H - 0.6, 6, 0.3, { fontSize: 11, color: C.muted }); }
+    // делим магазины поровну по слайдам, не больше 4 на слайд (5 → 3 + 2)
+    const pages = Math.ceil(R.list.length / 4), per = Math.ceil(R.list.length / pages);
+    const chunks = []; for (let i = 0; i < R.list.length; i += per) chunks.push(R.list.slice(i, i + per));
+    const sfx = (k) => (chunks.length > 1 ? ` (${k + 1} из ${chunks.length})` : "");
+    let n = 1;
+    const foot = (sl) => { txt(sl, `Итоги: ${R.monthLabel.toLowerCase()} · ${R.name}`, M, H - 0.42, 8, 0.25, { fontSize: 10, color: C.muted }); txt(sl, String(++n), W - M - 1, H - 0.42, 1, 0.25, { fontSize: 10, color: C.muted, align: "right" }); };
+    const AN = KPI.monthAn;
+    for (const [kind, t, sub] of [["kpi", "Ключевые показатели", `${R.monthLabel}: результаты каждого магазина; эффективность — рост оборота минус рост трафика к году`],
+      ["mix", "Гросс-маржа, аксессуары и услуги", "Аксессуары и услуги — к тому же месяцу прошлого года"],
+      ["dec", "За счёт чего изменился оборот", "Вклад факторов в изменение оборота к прошлому году"]]) {
+      if (kind === "dec" && !R.list.some((r) => r.decPy)) continue;
+      chunks.forEach((st, k) => { const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, t + sfx(k), sub); mTable(sl, AN.multiRows(kind), st, 1.5); foot(sl); });
+    }
+    if (R.list.some((r) => r.cats)) chunks.forEach((st, k) => {
+      const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, "Категории: рост и падение" + sfx(k), `${R.monthLabel} к прошлому месяцу, по подкатегориям`);
+      mCols(pres, sl, st, 1.5, (r, x, y, w, h) => {
+        if (!r.cats) { txt(sl, "Нет данных", x, y, w, 0.3, { fontSize: 12, color: C.muted }); return; }
+        const L = (arr) => arr.slice(0, 5).map((c, i, a) => [{ text: short(c.name, 26) + "  ", options: {} }, { text: rubS(c.d, true), options: { bold: true, color: c.d >= 0 ? C.good : C.bad, breakLine: i < a.length - 1 } }]).flat();
+        txt(sl, "Рост", x, y, w, 0.28, { fontSize: 13, bold: true, color: C.good });
+        if (r.cats.top.length) txt(sl, L(r.cats.top), x, y + 0.32, w, h / 2 - 0.4, { fontSize: 11.5, paraSpaceAfter: 3, fit: "shrink" });
+        txt(sl, "Падение", x, y + h / 2, w, 0.28, { fontSize: 13, bold: true, color: C.bad });
+        if (r.cats.anti.length) txt(sl, L(r.cats.anti), x, y + h / 2 + 0.32, w, h / 2 - 0.4, { fontSize: 11.5, paraSpaceAfter: 3, fit: "shrink" });
+      });
+      foot(sl);
+    });
+    chunks.forEach((st, k) => {
+      const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, "Где хорошо и где плохо" + sfx(k), "Главное по каждому магазину");
+      mCols(pres, sl, st, 1.5, (r, x, y, w, h) => {
+        const B = r.bad.slice(0, 3), G2 = r.good.slice(0, 2);
+        const t = [{ text: "Плохо", options: { bold: true, color: C.bad, breakLine: true } }].concat(B.map((b) => ({ text: short(`${b.area}: ${b.text}`, 120), options: { bullet: true, breakLine: true } })))
+          .concat([{ text: "Хорошо", options: { bold: true, color: C.good, breakLine: true } }]).concat(G2.map((g, i) => ({ text: short(`${g.area}: ${g.text}`, 110), options: { bullet: true, breakLine: i < G2.length - 1 } })));
+        txt(sl, t, x, y, w, h, { fontSize: 11, paraSpaceAfter: 4, fit: "shrink" });
+      });
+      foot(sl);
+    });
+    chunks.forEach((st, k) => {
+      const sl = pres.addSlide(); sl.background = { color: C.navy };
+      txt(sl, "План действий" + sfx(k), M, 0.38, W - 2 * M, 0.6, { fontSize: 30, bold: true, color: C.white, valign: "middle" });
+      txt(sl, "Что делает каждый магазин в следующем месяце", M, 1.0, W - 2 * M, 0.35, { fontSize: 14, color: "CADCFC" });
+      mCols(pres, sl, st, 1.5, (r, x, y, w, h) => {
+        const A = r.actions.filter((a) => a.area !== "Контроль").slice(0, 3);
+        txt(sl, A.map((a, i) => [{ text: `${i + 1}. ${a.area}: `, options: { bold: true, color: C.white } }, { text: short(a.what, 130), options: { color: "DCE6F2", breakLine: i < A.length - 1 } }]).flat(), x, y, w, h, { fontSize: 11.5, paraSpaceAfter: 8, fit: "shrink" });
+      }, true);
+    });
+    const browser = typeof window !== "undefined" && typeof document !== "undefined";
+    return pres.write({ outputType: browser ? "blob" : "nodebuffer", compression: true });
+  }
+
+  KPI.monthPpt = { build: (res) => (res.type === "monthMulti" ? buildMulti(res) : build(res)) };
 })(typeof globalThis !== "undefined" ? globalThis : this);

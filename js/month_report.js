@@ -157,14 +157,14 @@
     const col = (v, sc, inv) => bg(isn(v) ? (inv ? -v : v) : null, sc);
     const avg = (k) => { const a = S.map((s) => s[k]).filter(isn); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; };
     const gmA = avg("gmPct"), accA = avg("accSh"), srvA = avg("srvSh");
-    const rows = S.map((s, i) => `<tr><td>${i + 1}</td><th class="rl">${esc(s.code)}<small class="sub">${esc([s.city, s.part].filter(Boolean).join(" · "))}</small></th>${res.level === "dsm" || res.level === "all" ? `<td class="tl">${esc(s.asm)}</td>` : ""}<td>${rubS(s.rev)}</td>
+    const rows = S.map((s, i) => `<tr><td>${i + 1}</td><th class="rl">${esc(s.code)}<small class="sub">${esc([s.city, s.part].filter(Boolean).join(" · "))}</small></th>${res.level === "dsm" || res.level === "all" || res.level === "group" ? `<td class="tl">${esc(s.asm)}</td>` : ""}<td>${rubS(s.rev)}</td>
 <td style="${col(s.dPy, 25)}">${isn(s.dPy) ? fmt(s.dPy, 1, true) + "%" : "—"}</td><td style="${col(s.dPrev, 25)}">${isn(s.dPrev) ? fmt(s.dPrev, 1, true) + "%" : "—"}</td>
 <td>${isn(s.conv) ? fmt(s.conv, 1) + "%" : "—"}</td><td style="${col(s.dConv, 3)}">${isn(s.dConv) ? fmt(s.dConv, 1, true) : "—"}</td><td style="${col(s.eff, 15)}">${isn(s.eff) ? fmt(s.eff, 1, true) : "—"}</td>
 <td style="${col(s.dAvg, 15)}">${isn(s.dAvg) ? fmt(s.dAvg, 1, true) + "%" : "—"}</td>
 <td style="${col(isn(s.gmPct) && isn(gmA) ? s.gmPct - gmA : null, 4)}">${isn(s.gmPct) ? fmt(s.gmPct, 1) + "%" : "—"}</td><td style="${col(isn(s.accSh) && isn(accA) ? s.accSh - accA : null, 2)}">${isn(s.accSh) ? fmt(s.accSh, 1) + "%" : "—"}</td>
 <td style="${col(isn(s.srvSh) ? s.srvSh - res.norms.srv_share_min : null, 2)}">${isn(s.srvSh) ? fmt(s.srvSh, 1) + "%" : "—"}</td><td style="${col(isn(s.chdu) ? s.chdu - res.norms.chdu_min : null, 3)}">${isn(s.chdu) ? fmt(s.chdu, 1) + "%" : "—"}</td></tr>`).join("");
     return `<section class="panel"><h3>Магазины: ${esc(res.monthLabel.toLowerCase())}</h3><p class="muted">Зелёный — лучше, красный — хуже: приросты относительно нуля, гросс и доля аксессуаров — относительно среднего по магазинам, доля услуг и ЧДУ — относительно нормы.</p>
-<div class="tw"><table class="mt sticky1"><thead><tr><th>№</th><th>Магазин</th>${res.level === "dsm" || res.level === "all" ? "<th>ASM</th>" : ""}<th>Оборот</th><th>к году</th><th>к прошлому месяцу</th><th>Конверсия</th><th>Δ конв., п.п.</th><th>Эффективность</th><th>Ср. чек к году</th><th>Гросс</th><th>Доля АКС</th><th>Доля услуг</th><th>ЧДУ</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+<div class="tw"><table class="mt sticky1"><thead><tr><th>№</th><th>Магазин</th>${res.level === "dsm" || res.level === "all" || res.level === "group" ? "<th>ASM</th>" : ""}<th>Оборот</th><th>к году</th><th>к прошлому месяцу</th><th>Конверсия</th><th>Δ конв., п.п.</th><th>Эффективность</th><th>Ср. чек к году</th><th>Гросс</th><th>Доля АКС</th><th>Доля услуг</th><th>ЧДУ</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }
   function actionsBlock(res) {
     return res.actions.map((a, i) => `<div class="act ${a.prio === "Высокий" ? "bad" : a.prio === "Средний" ? "warn" : ""}"><div class="act-h"><b>${i + 1}. ${esc(a.area)}</b><span class="prio">${esc(a.prio)} приоритет</span></div><p class="what">${esc(a.what)}</p><p class="muted">${esc(a.why)}</p></div>`).join("");
@@ -205,5 +205,47 @@ td.tl{text-align:left}
 @media (prefers-color-scheme:dark){.mchart .bc{fill:#5b78a8}}
 `;
 
-  KPI.monthReport = { build };
+  // ---------------------------------------------------------------- несколько магазинов: результаты рядом, без суммы
+  function multiTable(R, kind, title, note) {
+    const rows = KPI.monthAn.multiRows(kind);
+    const L = R.list;
+    const head = `<th>Показатель</th>` + L.map((r) => `<th class="mh"><b>${esc(r.code)}</b><small>${esc(r.attrs ? r.attrs.city : "")}</small></th>`).join("");
+    const body = rows.map(([label, f]) => {
+      const cells = L.map((r) => { const c = f(r); if (!c) return '<td class="mc">—</td>';
+        const v = c.sign != null ? `<b class="${c.sign >= 0 ? "pos" : "neg"}">${esc(c.v)}</b>` : `<b>${esc(c.v)}</b>`;
+        return `<td class="mc">${v}${c.d.map(([l, x, u]) => `<span>${dl(x, u)} <i>${esc(l)}</i></span>`).join("")}</td>`; });
+      return cells.every((c) => c === '<td class="mc">—</td>') ? "" : `<tr><th class="rl">${esc(label)}</th>${cells.join("")}</tr>`;
+    }).join("");
+    return `<section class="panel"><h3>${esc(title)}</h3>${note ? `<p class="muted">${esc(note)}</p>` : ""}<div class="tw"><table class="mt mtm sticky1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+  }
+  function multiCards(R, fn) {
+    return `<div class="mcards">${R.list.map((r) => `<section class="panel"><h3>${esc(r.code)} <small class="muted">${esc(r.attrs ? [r.attrs.city, r.attrs.asm].filter(Boolean).join(" · ") : "")}</small></h3>${fn(r)}</section>`).join("")}</div>`;
+  }
+  function buildMulti(R, baseCss) {
+    const li = (arr, cls, n) => arr.length ? `<ul class="mli ${cls}">${arr.slice(0, n).map((x) => `<li><b>${esc(x.area)}.</b> ${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">—</p>';
+    const catList = (arr, cls) => arr.length ? `<ol class="mli ${cls}">${arr.slice(0, 7).map((x) => `<li>${esc(x.name)} <b class="${x.d >= 0 ? "pos" : "neg"}">${rubS(x.d, true)}</b> <span class="muted">(${isn(x.dQty) ? `шт ${fmt(x.dQty, 0, true)}%` : ""}${isn(x.dPrice) ? `, цена ${fmt(x.dPrice, 0, true)}%` : ""})</span></li>`).join("")}</ol>` : '<p class="muted">—</p>';
+    const tabs = [["kpi", "Показатели"], ["mix", "Гросс, АКС, услуги"], ["dec", "За счёт чего"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
+    const notes = [...new Set(R.list.flatMap((r) => r.notes))].map((n) => `<div class="banner">ℹ ${esc(n)}</div>`).join("");
+    const sec = {
+      kpi: notes + multiTable(R, "kpi", `Ключевые показатели: ${R.monthLabel.toLowerCase()}`, "Результаты каждого магазина отдельно. Эффективность — рост оборота минус рост трафика к прошлому году; ниже изменения в п.п."),
+      mix: multiTable(R, "mix", "Гросс-маржа, аксессуары и услуги", "Аксессуары и услуги — к тому же месяцу прошлого года."),
+      dec: multiTable(R, "dec", "За счёт чего изменился оборот к прошлому году", "На сколько рублей изменили оборот трафик, конверсия, средняя цена и штуки в чеке."),
+      cat: multiCards(R, (r) => (r.cats ? `<h4>Рост к прошлому месяцу</h4>${catList(r.cats.top, "good")}<h4>Падение</h4>${catList(r.cats.anti, "bad")}` : '<p class="muted">Нет данных по подкатегориям.</p>')),
+      fin: multiCards(R, (r) => `<h4>Где плохо</h4>${li(r.bad, "bad", 6)}<h4>Где хорошо</h4>${li(r.good, "good", 4)}`),
+      plan: multiCards(R, (r) => r.actions.slice(0, 5).map((a, i) => `<div class="act ${a.prio === "Высокий" ? "bad" : a.prio === "Средний" ? "warn" : ""}"><div class="act-h"><b>${i + 1}. ${esc(a.area)}</b></div><p class="what">${esc(a.what)}</p></div>`).join("")),
+    };
+    const now = new Date();
+    const body = `<div class="rep"><header class="top"><div class="ttl"><h1>Итоги: ${esc(R.monthLabel.toLowerCase())} · ${esc(R.name)}</h1><p>${esc(R.sub)}</p><p class="muted">Отчёт ${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}</p></div></header>
+<nav class="tabs">${tabs.map(([t, n], i) => `<button class="tb${i ? "" : " on"}" data-t="${t}">${n}</button>`).join("")}</nav><main>
+${tabs.map(([t], i) => `<section class="tab${i ? "" : " on"}" data-tab="${t}">${sec[t]}</section>`).join("\n")}
+</main><div class="tipbox" role="tooltip"></div></div>`;
+    return { body, css: baseCss + CSS + MCSS, title: `Итоги месяца — ${R.name}` };
+  }
+  const MCSS = `
+.mtm td.mc{text-align:left;vertical-align:top;white-space:nowrap;min-width:150px}.mtm td.mc b{display:block;font-size:16px}.mtm td.mc span{display:block;font-size:12px}.mtm td.mc i{font-style:normal;color:var(--muted);display:inline}.mtm td.mc .dl{display:inline}
+.mtm th.mh{text-align:left;min-width:150px}.mtm th.mh small{display:block;font-weight:400;color:var(--muted)}
+b.pos{color:var(--good)}b.neg{color:var(--bad)}.mcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.mcards .panel{margin:12px 0 0}.mcards h4{margin:10px 0 4px;font-size:13.5px}
+`;
+
+  KPI.monthReport = { build, buildMulti };
 })(typeof globalThis !== "undefined" ? globalThis : this);
