@@ -66,24 +66,25 @@
 
   // ---------------------------------------------------------------- слайды
   function sTitle(pres, res) {
-    const sl = pres.addSlide(); sl.background = { color: C.navy };
+    const sl = pres.addSlide(); sl.background = { color: C.white };
     const MG = KPI.month.MONTHS_GEN[res.Mo];
-    txt(sl, `Итоги ${MG} ${res.Y}`, M, 1.2, W - 2 * M, 0.9, { fontSize: 44, bold: true, color: C.white });
-    txt(sl, res.name, M, 2.15, W - 2 * M, 0.6, { fontSize: 28, color: "CADCFC" });
-    txt(sl, res.sub || "", M, 2.75, W - 2 * M, 0.4, { fontSize: 16, color: "CADCFC" });
-    const r = (k) => (res.kpi || []).find((x) => x.k === k) || {};
-    const stats = [];
-    if (res.P && res.P.cur) stats.push([rubS(res.P.cur.rev), "оборот за месяц"]);
-    if (isn(r("rev").dPy)) stats.push([`${fmt(r("rev").dPy, 1, true)}%`, "оборот к прошлому году"]);
-    if (res.gross && res.gross.month) stats.push([`${fmt(res.gross.month.pct, 1)}%`, `гросс-маржа (${rubS(res.gross.month.gm)})`]);
-    else if (res.P && res.P.cur && isn(res.P.cur.conv)) stats.push([`${fmt(res.P.cur.conv, 1)}%`, "конверсия"]);
-    stats.slice(0, 3).forEach(([v, l], i) => {
-      const x = M + i * 4.1;
-      txt(sl, v, x, 4.3, 3.9, 0.9, { fontSize: 44, bold: true, color: C.white });
-      txt(sl, l, x, 5.2, 3.9, 0.4, { fontSize: 14, color: "CADCFC" });
+    txt(sl, `Итоги ${MG} ${res.Y}`, M, 1.0, W - 2 * M, 0.9, { fontSize: 44, bold: true, color: C.navy });
+    txt(sl, res.name, M, 1.95, W - 2 * M, 0.6, { fontSize: 28, color: C.ink });
+    txt(sl, res.sub || "", M, 2.55, W - 2 * M, 0.4, { fontSize: 16, color: C.muted });
+    const r = (k) => (res.kpi || []).find((x) => x.k === k);
+    const val = (x) => (x.k === "rev" ? rubS(x.cur) : x.k === "traffic" ? fmt(x.cur, 0) : x.k === "upt" ? fmt(x.cur, 2) : `${fmt(x.cur, 0)} ₽`);
+    const stats = [["rev", "Оборот"], ["traffic", "Трафик"], ["price", "Средняя цена"], ["avg", "Средний чек"], ["upt", "Штук в чеке"]].map(([k, l]) => [r(k), l]).filter((x) => x[0] && isn(x[0].cur));
+    const gap = 0.25, cw = (W - 2 * M - gap * (stats.length - 1)) / Math.max(1, stats.length);
+    stats.forEach(([x, l], i) => {
+      const xx = M + i * (cw + gap), y = 3.75;
+      card(pres, sl, xx, y, cw, 2.2, C.card);
+      txt(sl, l, xx + 0.25, y + 0.2, cw - 0.5, 0.35, { fontSize: 14, bold: true, color: C.muted });
+      txt(sl, val(x), xx + 0.25, y + 0.6, cw - 0.5, 0.7, { fontSize: 30, bold: true, color: C.navy, valign: "middle", fit: "shrink" });
+      txt(sl, [{ text: arrow(x.dPy, "%"), options: { bold: true, color: colorOf(x.dPy) } }, { text: "  к году", options: { color: C.muted } }], xx + 0.25, y + 1.4, cw - 0.4, 0.3, { fontSize: 11 });
+      txt(sl, [{ text: arrow(x.dPrev, "%"), options: { bold: true, color: colorOf(x.dPrev) } }, { text: "  к прошл. мес.", options: { color: C.muted } }], xx + 0.25, y + 1.72, cw - 0.4, 0.3, { fontSize: 11 });
     });
     const d = new Date();
-    txt(sl, `Сформировано ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`, M, H - 0.6, 6, 0.3, { fontSize: 11, color: "9FB0CF" });
+    txt(sl, `Сформировано ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`, M, H - 0.6, 6, 0.3, { fontSize: 11, color: C.muted });
   }
   function sKpi(pres, res, n) {
     if (!res.kpi) return n;
@@ -94,10 +95,10 @@
     const val = (x) => (!x ? "—" : x.type === "sum" ? (x.k === "traffic" || x.k === "checks" ? fmt(x.cur, 0) : rubS(x.cur)) : x.type === "avg" ? (x.k === "upt" ? fmt(x.cur, 2) : `${fmt(x.cur, 0)} ₽`) : x.type === "pct" ? `${fmt(x.cur, 1)}%` : "");
     const u = (x) => (x.type === "pct" || x.type === "eff" ? " п.п." : "%");
     const cards = [];
-    for (const k of ["rev", "traffic", "conv", "eff", "avg", "price", "upt", "planPct"]) {
+    for (const k of ["rev", "traffic", "conv", "eff", "avg", "price", "upt"]) {
       const x = r(k); if (!x) continue;
       const third = region ? ["LfL", x.dLfl, u(x)] : ["с начала года", x.dYtd, u(x)];
-      if (k === "eff") cards.push([x.label, isn(x.dPy) ? `${fmt(x.dPy, 1, true)} п.п.` : "—", [["к прошлому месяцу", x.dPrev, u(x)], third], "рост оборота минус рост трафика, к году"]);
+      if (k === "eff") cards.push([x.label, isn(x.dPy) ? `${fmt(x.dPy, 1, true)}%` : "—", [["к прошлому месяцу", x.dPrev, u(x)], third], "рост оборота минус рост трафика, к году"]);
       else cards.push([x.label, val(x), [["к прошл. месяцу", x.dPrev, u(x)], ["к прошл. году", x.dPy, u(x)], third]]);
     }
     if (res.gross && res.gross.month) cards.push(["Гросс-маржа", `${fmt(res.gross.month.pct, 1)}%`, [["к прошл. месяцу", res.gross.dPrevPct, " п.п."], ["гросс, ₽", res.gross.dPrevGm, "%"]], rubS(res.gross.month.gm)]);
@@ -189,8 +190,8 @@
     const t = a.t, b = res.accBench && res.accBench.t;
     title(sl, "Аксессуары", `${res.monthLabel} к тому же месяцу прошлого года`);
     const cards = [["Оборот аксессуаров", rubS(t.acc), [["к прошл. году", t.yoy, "%"]]], ["Доля аксессуаров", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."]].concat(b && isn(b.sh) ? [[`к ${res.bench.name}`, t.sh - b.sh, " п.п."]] : [])],
-      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошл. году", t.dAtt, " п.п."]]], ["План аксессуаров", isn(t.plan) ? `${fmt(t.plan, 1)}%` : "—", [["до 100%", isn(t.plan) ? t.plan - 100 : null, " п.п."]]]];
-    const cw = (W - 2 * M - 0.75) / 4;
+      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошл. году", t.dAtt, " п.п."]]]];
+    const cw = (W - 2 * M - 0.5) / 3;
     cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.65, c[0], c[1], c[2]));
     txt(sl, "По категориям: что растёт и что падает", M, 3.4, W - 2 * M, 0.3, { fontSize: 14, bold: true, color: C.navy });
     const hasAtt = a.eco.some((e) => isn(e.att));
@@ -202,15 +203,14 @@
     const s = res.srv, T = res.types; if (!s && !T) return n;
     const sl = pres.addSlide(); sl.background = { color: C.white };
     title(sl, "Сервисы", "За счёт каких категорий растут или падают услуги (к прошлому году)");
-    const cw = (W - 2 * M - 0.75) / 4;
+    const cw = (W - 2 * M - 0.5) / 3;
     if (s) {
       const t = s.t, b = res.srvBench && res.srvBench.t;
-      const cards = [["Оборот услуг", rubS(t.srv), [["к прошл. году", t.yoy, "%"]]], ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."]].concat(b && isn(b.sh) ? [[`к ${res.bench.name}`, t.sh - b.sh, " п.п."]] : [])],
-        ["План услуг", isn(t.plan) ? `${fmt(t.plan, 1)}%` : "—", [["до 100%", isn(t.plan) ? t.plan - 100 : null, " п.п."]]], ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", T && isn(T.chdu) ? [["к норме " + fmt(res.norms.chdu_min, 0) + "%", T.chdu - res.norms.chdu_min, " п.п."]] : []]];
+      const cards = [["Оборот услуг", rubS(t.srv), [["к прошл. году", t.yoy, "%"]]], ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."]].concat(b && isn(b.sh) ? [[`к ${res.bench.name}`, t.sh - b.sh, " п.п."]] : [])], ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", T && isn(T.chdu) ? [["к норме " + fmt(res.norms.chdu_min, 0) + "%", T.chdu - res.norms.chdu_min, " п.п."]] : []]];
       cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.65, c[0], c[1], c[2]));
       const L = s.eco.filter((e) => e.srv || e.srvPY).sort((a, b) => a.d - b.d).slice(0, 8);
-      table(sl, M, 3.5, [3.6, 1.7, 1.7, 1.1, 1.3, 1.3, 1.53], ["Категория", "Оборот услуг", "Изменение, ₽", "%", "Доля", "Δ доли", "План"],
-        L.map((e) => [e.name, rubS(e.srv), { t: rubS(e.d, true), c: e.d >= 0 ? C.good : C.bad, b: true }, dCell(e.yoy, "%", 0), isn(e.sh) ? `${fmt(e.sh, 1)}%` : "—", dCell(e.dSh, " п.п."), { t: isn(e.plan) ? `${fmt(e.plan, 0)}%` : "—", c: isn(e.plan) && e.plan < 100 ? C.bad : C.ink }]), { fontSize: 11 });
+      table(sl, M, 3.5, [4.0, 1.9, 1.9, 1.3, 1.55, 1.58], ["Категория", "Оборот услуг", "Изменение, ₽", "%", "Доля", "Δ доли"],
+        L.map((e) => [e.name, rubS(e.srv), { t: rubS(e.d, true), c: e.d >= 0 ? C.good : C.bad, b: true }, dCell(e.yoy, "%", 0), isn(e.sh) ? `${fmt(e.sh, 1)}%` : "—", dCell(e.dSh, " п.п.")]), { fontSize: 11 });
     }
     footer(sl, res, ++n);
     if (T) {
@@ -243,9 +243,9 @@
       const rows = S.slice(p * per, (p + 1) * per).map((s, i) => [`${p * per + i + 1}. ${s.code}${s.city ? " · " + short(s.city, 14) : ""}${s.part ? " *" : ""}`, rubS(s.rev),
         { t: isn(s.dPy) ? `${fmt(s.dPy, 1, true)}%` : "—", fill: sh(s.dPy, s.dPy >= 0), b: true }, { t: isn(s.dPrev) ? `${fmt(s.dPrev, 1, true)}%` : "—", fill: sh(s.dPrev, s.dPrev >= 0) },
         isn(s.conv) ? `${fmt(s.conv, 1)}%` : "—", { t: isn(s.dConv) ? fmt(s.dConv, 1, true) : "—", fill: sh(s.dConv, s.dConv >= 0) }, { t: isn(s.eff) ? fmt(s.eff, 1, true) : "—", fill: sh(s.eff, s.eff >= 0) },
-        { t: isn(s.plan) ? `${fmt(s.plan, 0)}%` : "—", fill: sh(s.plan, s.plan >= 100) }, { t: isn(s.gmPct) ? `${fmt(s.gmPct, 1)}%` : "—", fill: isn(s.gmPct) && isn(gmA) ? sh(s.gmPct, s.gmPct >= gmA) : undefined },
+        { t: isn(s.gmPct) ? `${fmt(s.gmPct, 1)}%` : "—", fill: isn(s.gmPct) && isn(gmA) ? sh(s.gmPct, s.gmPct >= gmA) : undefined },
         isn(s.accSh) ? `${fmt(s.accSh, 1)}%` : "—", { t: isn(s.srvSh) ? `${fmt(s.srvSh, 1)}%` : "—", fill: sh(s.srvSh, s.srvSh >= res.norms.srv_share_min) }]);
-      table(sl, M, 1.5, [2.9, 1.25, 1.05, 1.05, 0.95, 0.85, 0.95, 0.8, 0.85, 0.8, 0.83], ["Магазин", "Оборот", "к году", "к пр. мес.", "Конверсия", "Δ конв.", "Эффект.", "План", "Гросс", "АКС", "Услуги"], rows, { fontSize: 11, rowH: 0.3 });
+      table(sl, M, 1.5, [3.2, 1.3, 1.1, 1.1, 1.0, 0.9, 1.0, 0.95, 0.85, 0.83], ["Магазин", "Оборот", "к году", "к пр. мес.", "Конверсия", "Δ конв.", "Эффект.", "Гросс", "АКС", "Услуги"], rows, { fontSize: 11, rowH: 0.3 });
       if (S.some((s) => s.part)) txt(sl, "* неполный месяц или новый магазин — сравнение условное", M, H - 0.75, 8, 0.25, { fontSize: 10, color: C.muted });
       footer(sl, res, ++n);
     }

@@ -31,7 +31,7 @@
     const T = [];
     const add = (t, v, rr, note) => T.push({ t, v, r: rr, note });
     if (res.kpi) {
-      for (const k of ["rev", "traffic", "conv", "eff", "avg", "planPct"]) { const r = row(k); if (r) add(r.label, r.type === "eff" ? (isn(r.dPy) ? `${fmt(r.dPy, 1, true)} п.п.` : "—") : valOf(r), r); }
+      for (const k of ["rev", "traffic", "conv", "eff", "avg", "price", "upt"]) { const r = row(k); if (r) add(r.label, r.type === "eff" ? (isn(r.dPy) ? `${fmt(r.dPy, 1, true)}%` : "—") : valOf(r), r); }
     }
     if (res.gross && res.gross.month) T.push({ t: "Гросс-маржа", v: rubS(res.gross.month.gm), note: `${fmt(res.gross.month.pct, 1)}% оборота`, extra: [["к прошлому месяцу", res.gross.dPrevPct, " п.п."]] });
     const a = row("accSh"); if (a) add("Доля аксессуаров", valOf(a), a);
@@ -125,7 +125,7 @@
     const hasAtt = a.eco.some((e) => isn(e.att));
     const rows = a.eco.map((e) => `<tr><th class="rl">${esc(e.name)}</th><td>${rub(e.acc)}</td><td style="${bg(e.d, Math.max(...a.eco.map((x) => Math.abs(x.d)), 1))}"><b>${rubS(e.d, true)}</b></td><td>${dl(e.yoy, "%", 0)}</td><td>${isn(e.sh) ? fmt(e.sh, 1) + "%" : "—"}</td><td>${dl(e.dSh, " п.п.")}</td>${hasAtt ? `<td>${isn(e.att) ? fmt(e.att, 1) + "%" : "—"}</td><td>${dl(e.dAtt, " п.п.")}</td>` : ""}</tr>`).join("");
     return `<div class="mtiles">${[["Оборот аксессуаров", rubS(t.acc), [["к прошлому году", t.yoy, "%"]]], ["Доля аксессуаров", `${fmt(t.sh, 1)}%`, [["к прошлому году", t.dSh, " п.п."]].concat(b ? [["против " + res.bench.name, isn(b.sh) ? t.sh - b.sh : null, " п.п."]] : [])],
-      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошлому году", t.dAtt, " п.п."]]], ["План аксессуаров", isn(t.plan) ? `${fmt(t.plan, 1)}%` : "—", []]].map(([l, v, ds]) =>
+      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошлому году", t.dAtt, " п.п."]]]].map(([l, v, ds]) =>
       `<div class="mtile ${ds.some((d) => isn(d[1]) && d[1] < 0) ? "bad" : "good"}"><small>${esc(l)}</small><b>${esc(v)}</b><div class="mtd">${ds.map(([x, y, u]) => `<span><i>${esc(x)}</i>${dl(y, u)}</span>`).join("")}</div></div>`).join("")}</div>
 <section class="panel"><h3>За счёт каких категорий (к прошлому году)</h3><div class="tw"><table class="mt sticky1"><thead><tr><th>Категория</th><th>Оборот АКС</th><th>Изменение, ₽</th><th>%</th><th>Доля АКС</th><th>Δ доли</th>${hasAtt ? "<th>Аттач</th><th>Δ аттача</th>" : ""}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }
@@ -135,12 +135,11 @@
     let h = "";
     if (s) {
       const t = s.t, b = res.srvBench && res.srvBench.t;
-      h += `<div class="mtiles">${[["Оборот услуг", rubS(t.srv), [["к прошлому году", t.yoy, "%"]]], ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошлому году", t.dSh, " п.п."]].concat(b ? [["против " + res.bench.name, isn(b.sh) ? t.sh - b.sh : null, " п.п."]] : [])],
-        ["План услуг", isn(t.plan) ? `${fmt(t.plan, 1)}%` : "—", []], ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", []]].map(([l, v, ds]) =>
-        `<div class="mtile ${ds.some((d) => isn(d[1]) && d[1] < 0) || (l === "План услуг" && isn(t.plan) && t.plan < 100) || (l === "ЧДУ" && T && isn(T.chdu) && T.chdu < res.norms.chdu_min) ? "bad" : "good"}"><small>${esc(l)}</small><b>${esc(v)}</b><div class="mtd">${ds.map(([x, y, u]) => `<span><i>${esc(x)}</i>${dl(y, u)}</span>`).join("")}</div></div>`).join("")}</div>`;
+      h += `<div class="mtiles">${[["Оборот услуг", rubS(t.srv), [["к прошлому году", t.yoy, "%"]]], ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошлому году", t.dSh, " п.п."]].concat(b ? [["против " + res.bench.name, isn(b.sh) ? t.sh - b.sh : null, " п.п."]] : [])], ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", []]].map(([l, v, ds]) =>
+        `<div class="mtile ${ds.some((d) => isn(d[1]) && d[1] < 0) || (l === "ЧДУ" && T && isn(T.chdu) && T.chdu < res.norms.chdu_min) ? "bad" : "good"}"><small>${esc(l)}</small><b>${esc(v)}</b><div class="mtd">${ds.map(([x, y, u]) => `<span><i>${esc(x)}</i>${dl(y, u)}</span>`).join("")}</div></div>`).join("")}</div>`;
       const mx = Math.max(...s.eco.map((x) => Math.abs(x.d)), 1);
-      h += `<section class="panel"><h3>За счёт каких категорий растут или падают услуги (к прошлому году)</h3><div class="tw"><table class="mt sticky1"><thead><tr><th>Категория</th><th>Оборот услуг</th><th>Изменение, ₽</th><th>%</th><th>Доля услуг</th><th>Δ доли</th><th>План</th><th>Проникновение, шт</th></tr></thead><tbody>${s.eco.map((e) =>
-        `<tr><th class="rl">${esc(e.name)}</th><td>${rub(e.srv)}</td><td style="${bg(e.d, mx)}"><b>${rubS(e.d, true)}</b></td><td>${dl(e.yoy, "%", 0)}</td><td>${isn(e.sh) ? fmt(e.sh, 1) + "%" : "—"}</td><td>${dl(e.dSh, " п.п.")}</td><td class="${isn(e.plan) && e.plan < 100 ? "c-bad" : ""}">${isn(e.plan) ? fmt(e.plan, 0) + "%" : "—"}</td><td>${isn(e.pen) ? fmt(e.pen, 1) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div></section>`;
+      h += `<section class="panel"><h3>За счёт каких категорий растут или падают услуги (к прошлому году)</h3><div class="tw"><table class="mt sticky1"><thead><tr><th>Категория</th><th>Оборот услуг</th><th>Изменение, ₽</th><th>%</th><th>Доля услуг</th><th>Δ доли</th><th>Проникновение, шт</th></tr></thead><tbody>${s.eco.map((e) =>
+        `<tr><th class="rl">${esc(e.name)}</th><td>${rub(e.srv)}</td><td style="${bg(e.d, mx)}"><b>${rubS(e.d, true)}</b></td><td>${dl(e.yoy, "%", 0)}</td><td>${isn(e.sh) ? fmt(e.sh, 1) + "%" : "—"}</td><td>${dl(e.dSh, " п.п.")}</td><td>${isn(e.pen) ? fmt(e.pen, 1) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div></section>`;
     }
     if (T) {
       const list = T.types.filter((t) => t.rub || t.qty || t.benchPen);
@@ -161,11 +160,11 @@
     const rows = S.map((s, i) => `<tr><td>${i + 1}</td><th class="rl">${esc(s.code)}<small class="sub">${esc([s.city, s.part].filter(Boolean).join(" · "))}</small></th>${res.level === "dsm" || res.level === "all" ? `<td class="tl">${esc(s.asm)}</td>` : ""}<td>${rubS(s.rev)}</td>
 <td style="${col(s.dPy, 25)}">${isn(s.dPy) ? fmt(s.dPy, 1, true) + "%" : "—"}</td><td style="${col(s.dPrev, 25)}">${isn(s.dPrev) ? fmt(s.dPrev, 1, true) + "%" : "—"}</td>
 <td>${isn(s.conv) ? fmt(s.conv, 1) + "%" : "—"}</td><td style="${col(s.dConv, 3)}">${isn(s.dConv) ? fmt(s.dConv, 1, true) : "—"}</td><td style="${col(s.eff, 15)}">${isn(s.eff) ? fmt(s.eff, 1, true) : "—"}</td>
-<td style="${col(s.dAvg, 15)}">${isn(s.dAvg) ? fmt(s.dAvg, 1, true) + "%" : "—"}</td><td style="${col(isn(s.plan) ? s.plan - 100 : null, 20)}">${isn(s.plan) ? fmt(s.plan, 0) + "%" : "—"}</td>
+<td style="${col(s.dAvg, 15)}">${isn(s.dAvg) ? fmt(s.dAvg, 1, true) + "%" : "—"}</td>
 <td style="${col(isn(s.gmPct) && isn(gmA) ? s.gmPct - gmA : null, 4)}">${isn(s.gmPct) ? fmt(s.gmPct, 1) + "%" : "—"}</td><td style="${col(isn(s.accSh) && isn(accA) ? s.accSh - accA : null, 2)}">${isn(s.accSh) ? fmt(s.accSh, 1) + "%" : "—"}</td>
 <td style="${col(isn(s.srvSh) ? s.srvSh - res.norms.srv_share_min : null, 2)}">${isn(s.srvSh) ? fmt(s.srvSh, 1) + "%" : "—"}</td><td style="${col(isn(s.chdu) ? s.chdu - res.norms.chdu_min : null, 3)}">${isn(s.chdu) ? fmt(s.chdu, 1) + "%" : "—"}</td></tr>`).join("");
-    return `<section class="panel"><h3>Магазины: ${esc(res.monthLabel.toLowerCase())}</h3><p class="muted">Зелёный — лучше, красный — хуже: приросты относительно нуля, план — относительно 100%, гросс и доля аксессуаров — относительно среднего по магазинам, доля услуг и ЧДУ — относительно нормы.</p>
-<div class="tw"><table class="mt sticky1"><thead><tr><th>№</th><th>Магазин</th>${res.level === "dsm" || res.level === "all" ? "<th>ASM</th>" : ""}<th>Оборот</th><th>к году</th><th>к прошлому месяцу</th><th>Конверсия</th><th>Δ конв., п.п.</th><th>Эффективность</th><th>Ср. чек к году</th><th>План</th><th>Гросс</th><th>Доля АКС</th><th>Доля услуг</th><th>ЧДУ</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+    return `<section class="panel"><h3>Магазины: ${esc(res.monthLabel.toLowerCase())}</h3><p class="muted">Зелёный — лучше, красный — хуже: приросты относительно нуля, гросс и доля аксессуаров — относительно среднего по магазинам, доля услуг и ЧДУ — относительно нормы.</p>
+<div class="tw"><table class="mt sticky1"><thead><tr><th>№</th><th>Магазин</th>${res.level === "dsm" || res.level === "all" ? "<th>ASM</th>" : ""}<th>Оборот</th><th>к году</th><th>к прошлому месяцу</th><th>Конверсия</th><th>Δ конв., п.п.</th><th>Эффективность</th><th>Ср. чек к году</th><th>Гросс</th><th>Доля АКС</th><th>Доля услуг</th><th>ЧДУ</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }
   function actionsBlock(res) {
     return res.actions.map((a, i) => `<div class="act ${a.prio === "Высокий" ? "bad" : a.prio === "Средний" ? "warn" : ""}"><div class="act-h"><b>${i + 1}. ${esc(a.area)}</b><span class="prio">${esc(a.prio)} приоритет</span></div><p class="what">${esc(a.what)}</p><p class="muted">${esc(a.why)}</p></div>`).join("");

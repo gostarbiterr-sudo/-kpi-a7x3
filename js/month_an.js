@@ -60,8 +60,7 @@
   const KPI_ROWS = [  // [ключ, название, тип: sum|avg|pct, знаков]
     ["rev", "Оборот", "sum", 0], ["traffic", "Трафик", "sum", 0], ["checks", "Чеки", "sum", 0], ["conv", "Конверсия", "pct", 1],
     ["eff", "Эффективность", "eff", 1], ["avg", "Средний чек", "avg", 0], ["price", "Средняя цена", "avg", 0], ["upt", "Штук в чеке", "avg", 2],
-    ["planPct", "Выполнение плана", "pct", 1], ["acc", "Оборот аксессуаров", "sum", 0], ["accSh", "Доля аксессуаров", "pct", 1], ["accPlanPct", "План аксессуаров", "pct", 1],
-    ["srv", "Оборот услуг", "sum", 0], ["srvSh", "Доля услуг", "pct", 1], ["srvPlanPct", "План услуг", "pct", 1],
+    ["acc", "Оборот аксессуаров", "sum", 0], ["accSh", "Доля аксессуаров", "pct", 1], ["srv", "Оборот услуг", "sum", 0], ["srvSh", "Доля услуг", "pct", 1],
     ["creditSh", "Доля кредита", "pct", 1], ["pickupSh", "Доля PickUp (интернет)", "pct", 1], ["b2bSh", "Доля B2B", "pct", 1], ["dig", "Доля Digital", "pct", 1],
   ];
   function deltaOf(type, k, a, b) {
@@ -302,7 +301,6 @@
       const av = row("avg");
       if (isn(av.dPy) && av.dPy < -2 && dec) B("Средний чек", `Средний чек ${fmt(cur.avg, 0)} ₽ (${pctS(av.dPy)} к прошлому году): ${Math.abs(dec.price) > Math.abs(dec.upt) ? "в основном из-за средней цены" : "в основном из-за штук в чеке"} (цена ${pctS(row("price").dPy)}, штуки в чеке ${pctS(row("upt").dPy)}).`);
       const pl = row("planPct");
-      if (isn(cur.planPct)) (cur.planPct >= 100 ? G_ : B)("План", `План по обороту выполнен на ${fmt(cur.planPct, 1)}%${isn(cur.planRub) && cur.planPct < 100 ? `, не хватило ${rubS(cur.planRub - cur.rev)}` : ""}.`);
       if (isn(cur.srvSh) && cur.srvSh < res.norms.srv_share_min) B("Услуги", `Доля услуг ${fmt(cur.srvSh, 1)}% — ниже нормы ${fmt(res.norms.srv_share_min, 1)}%.`);
       if (res.benchCur && isn(res.benchCur.conv) && isn(cur.conv) && res.level === "store") {
         const d = cur.conv - res.benchCur.conv;
@@ -350,8 +348,8 @@
     // сервисы
     if (res.srv) {
       const t = res.srv.t;
-      const s = `Услуги ${rubS(t.srv)}, доля ${fmt(t.sh, 1)}%${isn(t.dSh) ? ` (${ppS(t.dSh)} к прошлому году)` : ""}${isn(t.plan) ? `, план ${fmt(t.plan, 0)}%` : ""}`;
-      ((isn(t.dSh) && t.dSh < 0) || (isn(t.plan) && t.plan < 100) ? B : G_)("Услуги", s + ".");
+      const s = `Услуги ${rubS(t.srv)}, доля ${fmt(t.sh, 1)}%${isn(t.dSh) ? ` (${ppS(t.dSh)} к прошлому году)` : ""}`;
+      ((isn(t.dSh) && t.dSh < 0) ? B : G_)("Услуги", s + ".");
       const up = res.srv.eco.filter((e) => e.d > 0).sort((a, b) => b.d - a.d), dn = res.srv.eco.filter((e) => e.d < 0).sort((a, b) => a.d - b.d);
       if (up.length) G_("Услуги", "Растут за счёт: " + up.slice(0, 3).map((e) => `${e.name} ${rubS(e.d, true)}`).join(", ") + " (к прошлому году).");
       if (dn.length) { B("Услуги", "Падают за счёт: " + dn.slice(0, 3).map((e) => `${e.name} ${rubS(e.d, true)}`).join(", ") + " (к прошлому году).");
