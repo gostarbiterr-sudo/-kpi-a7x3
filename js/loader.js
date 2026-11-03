@@ -237,23 +237,25 @@
   /* files: [{name, lastModified, buffer}] */
   async function loadFiles(files, progress) {
     const say = progress || (() => {});
-    const cands = [], info = [], contests = [];
+    const cands = [], info = [];
+    const MM = KPI.month ? KPI.month.emptyModel() : null;
     const addInfo = (file, sheet, kind, period, region, d, rows, comment) =>
       info.push({ file, sheet, kind, period: PERIOD_RU[period] || "—", region, date: iso(d), rows, comment });
 
     for (const f of files) {
       const base = f.name;
       if (base.startsWith("~$")) continue;
-      if (!/\.(xlsx|xlsm)$/i.test(base)) { addInfo(base, "", "не Excel", null, "", null, 0, "формат не поддерживается (нужен .xlsx)"); continue; }
+      if (!/\.(xlsx|xlsm|xlsb)$/i.test(base)) { addInfo(base, "", "не Excel", null, "", null, 0, "формат не поддерживается (нужен .xlsx, .xlsm или .xlsb)"); continue; }
       say(`Читаю ${base}…`);
+      if (MM) {                          // ежемесячные отчёты («Итоги месяца»)
+        const n0 = MM.files.length;
+        try { if (await KPI.month.tryLoad(f, say, MM)) { MM.files.slice(n0).forEach((x) => addInfo(x.file, "", x.kind, null, "", null, x.rows, "используется (итоги месяца). " + x.comment)); continue; } }
+        catch (e) { addInfo(base, "", "итоги месяца", null, "", null, 0, `не удалось прочитать: ${e.message || e}`); console.error(e); continue; }
+      }
+      if (/\.xlsb$/i.test(base)) { addInfo(base, "", "не распознан", null, "", null, 0, "двоичный файл .xlsb: не похож на отчёт по сервисам"); continue; }
       let book;
       try { book = await KPI.xlsx.readWorkbook(f.buffer); }
       catch (e) { addInfo(base, "", "ошибка", null, "", null, 0, `не удалось открыть: ${e.message || e}`); continue; }
-      if (KPI.contest) {                 // выгрузка конкурса 1P — отдельный отчёт
-        let C = null;
-        try { C = await KPI.contest.parseBook(book, base, f.lastModified); } catch (e) { addInfo(base, "", "конкурс 1P", null, "", null, 0, `не удалось прочитать: ${e.message || e}`); continue; }
-        if (C) { contests.push(C); continue; }
-      }
       const nd = nameDate(base);
       const md = new Date(f.lastModified || Date.now());
       const d = nd || new Date(Date.UTC(md.getFullYear(), md.getMonth(), md.getDate()));
@@ -332,13 +334,9 @@
         .map((k) => { const [kind, p] = k.split("|"); return `${kind === "kpi" ? "KPI" : "сотрудники"} ${PERIOD_RU[p].toLowerCase()} — ${ru(byKey[k])}`; });
       res.warnings.push("Файлы выгружены в разные дни: " + parts.join("; ") + ". Проверьте, что загружены свежие выгрузки.");
     }
-    // конкурс: берём самую свежую выгрузку
-    contests.sort((a, b) => b.exp - a.exp);
-    res.contest = contests[0] || null;
-    contests.forEach((C, i) => addInfo(C.file, "Магазины / Территория / Сотрудники", "Конкурс 1P", null, "", C.exp, C.stores.length,
-      i ? `не используется: есть более свежая выгрузка конкурса — ${contests[0].file}` : `используется. Магазинов: ${C.stores.length}, территорий: ${C.terrs.length}, продавцов: ${C.emps.length}.`));
-    const onlyContest = !Object.keys(res.kpi).length && !Object.keys(res.emp).length && res.contest;
-    if (!onlyContest) for (const p of PERIODS) {
+    res.month = MM ? KPI.month.finalize(MM) : null;
+    const onlyMonth = !Object.keys(res.kpi).length && !Object.keys(res.emp).length && res.month;
+    if (!onlyMonth) for (const p of PERIODS) {
       if (!res.kpi[p]) res.warnings.push(`Нет KPI-файла за период «${PERIOD_RU[p]}» — анализ магазина за этот период недоступен.`);
       if (!res.emp[p]) res.warnings.push(`Нет вкладки сотрудников за период «${PERIOD_RU[p]}» — анализ продавцов за этот период недоступен.`);
     }

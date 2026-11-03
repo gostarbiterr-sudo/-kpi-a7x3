@@ -19,7 +19,7 @@
 
   // ---------------------------------------------------------------- файлы
   async function addFiles(list) {
-    const arr = [...list].filter((f) => /\.(xlsx|xlsm)$/i.test(f.name));
+    const arr = [...list].filter((f) => /\.(xlsx|xlsm|xlsb)$/i.test(f.name));
     const skipped = [...list].length - arr.length;
     for (const f of arr) {
       const i = files.findIndex((x) => x.name === f.name);
@@ -47,8 +47,8 @@
     document.querySelectorAll("#step2 .seg2 button").forEach((b) => b.classList.toggle("on", b.dataset.m === m));
     $("#storeBox").hidden = m !== "store";
     $("#regionBox").hidden = m !== "region";
-    $("#contestBox").hidden = m !== "contest";
-    $("#plansRow").hidden = m === "contest";
+    $("#monthBox").hidden = m !== "month";
+    $("#plansRow").hidden = m === "month";
     $("#choices").innerHTML = "";
   }
   function renderSetup() {
@@ -69,22 +69,24 @@
       (loaded ? `<div class="sum"><div><b>KPI магазинов</b>${P.map((p) => chip(loaded.kpi[p], R[p] + dlab("kpi|" + p))).join("")}</div>` +
         `<div><b>Сотрудники</b>${P.map((p) => chip(loaded.emp[p], R[p] + dlab("emp|" + p))).join("")}</div>` +
         (nStores ? `<p class="muted">Работающих магазинов: <b>${nStores}</b> · регионов: <b>${regions.length}</b></p>` : "") +
-        (loaded.contest ? `<p class="muted">Конкурс 1P: магазинов <b>${loaded.contest.stores.length}</b> · выгрузка ${loader.ru(loaded.contest.exp)}</p>` : "") + `</div>` +
+        (loaded.month ? `<p class="muted">Итоги месяца: <b>${KPI.month.MONTHS[loaded.month.Mo]} ${loaded.month.Y}</b> · магазинов ${KPI.month.liveCodes(loaded.month).size} · отчётов ${loaded.month.files.length}</p>` : "") + `</div>` +
         loaded.warnings.map((w) => `<p class="warn">⚠ ${esc(w)}</p>`).join("") +
         `<details><summary>Что прочитано из файлов</summary><div class="rd">${loaded.files.map((r) =>
           `<div class="rdi ${r.comment.startsWith("используется") ? "used" : ""}"><b>${esc(r.file)}</b> · ${esc(r.sheet)}<br><small>${esc(r.kind)}${r.period !== "—" ? " · " + esc(r.period) : ""}${r.date ? " · " + esc(r.date) : ""} — ${esc(r.comment)}</small></div>`).join("")}</div></details>` : "");
-    const hasC = !!(loaded && loaded.contest);
-    $("#step2").hidden = !loaded || (nStores === 0 && !hasC);
+    const hasM = !!(loaded && loaded.month);
+    $("#step2").hidden = !loaded || (nStores === 0 && !hasM);
     document.querySelector('#step2 .seg2 button[data-m="store"]').hidden = nStores === 0;
     document.querySelector('#step2 .seg2 button[data-m="region"]').hidden = nStores === 0;
-    document.querySelector('#step2 .seg2 button[data-m="contest"]').hidden = !hasC;
-    if (hasC) {
-      const lastC = store.get("kpi_last_clevel", "");
-      $("#cLevel").innerHTML = KPI.contest.levels(loaded.contest).map((l) => { const v = l.level + "|" + l.name; return `<option value="${esc(v)}"${v === lastC ? " selected" : ""}>${esc(l.label)}</option>`; }).join("");
-      $("#cCodes").innerHTML = loaded.contest.stores.map((x) => `<option value="${esc(x.code)}">`).join("");
+    document.querySelector('#step2 .seg2 button[data-m="month"]').hidden = !hasM;
+    if (hasM) {
+      const lastC = store.get("kpi_last_mlevel", "");
+      $("#mLevel").innerHTML = KPI.month.levels(loaded.month).map((l) => { const v = l.level + "|" + l.name; return `<option value="${esc(v)}"${v === lastC ? " selected" : ""}>${esc(l.label)}</option>`; }).join("");
+      $("#mCodes").innerHTML = [...KPI.month.liveCodes(loaded.month)].sort().map((c) => `<option value="${esc(c)}">`).join("");
+      $("#mTitle").textContent = `Итоги: ${KPI.month.MONTHS[loaded.month.Mo]} ${loaded.month.Y}`;
+      if (!$("#mCode").value) $("#mCode").value = store.get("kpi_last_mcode", "");
     }
-    if (mode === "contest" && !hasC) mode = "store";
-    if (mode !== "contest" && nStores === 0 && hasC) mode = "contest";
+    if (mode === "month" && !hasM) mode = "store";
+    if (mode !== "month" && nStores === 0 && hasM) mode = "month";
     $("#codes").innerHTML = loaded ? [...analysis.liveCodes(loaded)].sort().map((c) => `<option value="${esc(c)}">`).join("") : "";
     const sel = $("#region"), lastR = store.get("kpi_last_region", "");
     sel.innerHTML = regions.map((r) => `<option value="${esc(r.name)}"${r.name === lastR ? " selected" : ""}>${esc(r.level === "total" ? `${r.name} — весь регион` : `${r.name} (ASM)`)}</option>`).join("");
@@ -99,7 +101,7 @@
   const planOpts = () => ({ includeDay: store.get("kpi_inc_day", true) });
 
   function compute(obj) {
-    if (obj.type === "contest") return KPI.contest.analyze(loaded.contest, obj.sel);
+    if (obj.type === "month") return KPI.monthAn.analyze(loaded.month, obj.sel, norms());
     return obj.type === "store" ? analysis.analyze(loaded, obj.code, norms(), plans(), planOpts())
       : analysis.analyzeRegion(loaded, obj.name, norms(), plans(), planOpts());
   }
@@ -133,26 +135,46 @@
     store.set("kpi_last_region", name);
     open({ type: "region", name });
   }
-  function runContest(useCode, codeArg) {
-    if (!loaded || !loaded.contest) return;
+  function runMonth(useCode, codeArg) {
+    if (!loaded || !loaded.month) return;
     const box = $("#choices"); box.innerHTML = "";
     if (useCode) {
-      const q = (codeArg || $("#cCode").value).trim();
+      const q = (codeArg || $("#mCode").value).trim();
       if (!q) { toast("Впишите код магазина"); return; }
-      const found = KPI.contest.findStore(loaded.contest, q);
-      if (!found.length) { box.innerHTML = `<p class="warn">Магазин «${esc(q)}» не найден в файле конкурса.</p>`; return; }
+      const found = KPI.month.findStore(loaded.month, q);
+      if (!found.length) { box.innerHTML = `<p class="warn">Магазин «${esc(q)}» не найден в отчётах за месяц.</p>`; return; }
       if (found.length > 1 && !codeArg) {
-        box.innerHTML = '<p class="muted">Найдено несколько магазинов — выберите:</p>' + found.slice(0, 40).map((c) => `<button class="choice" data-c="${esc(c)}"><b>${esc(c)}</b></button>`).join("");
-        box.querySelectorAll(".choice").forEach((b) => (b.onclick = () => runContest(true, b.dataset.c)));
+        box.innerHTML = '<p class="muted">Найдено несколько магазинов — выберите:</p>' + found.slice(0, 40).map((c) => { const a = KPI.month.attrs(loaded.month, c); return `<button class="choice" data-c="${esc(c)}"><b>${esc(c)}</b> ${esc([a.city, a.asm].filter(Boolean).join(" · "))}</button>`; }).join("");
+        box.querySelectorAll(".choice").forEach((b) => (b.onclick = () => runMonth(true, b.dataset.c)));
         return;
       }
-      $("#cCode").value = found[0];
-      open({ type: "contest", sel: { level: "store", code: found[0] } });
+      $("#mCode").value = found[0];
+      store.set("kpi_last_mcode", found[0]);
+      open({ type: "month", sel: { level: "store", code: found[0] } });
       return;
     }
-    const v = $("#cLevel").value, i = v.indexOf("|");
-    store.set("kpi_last_clevel", v);
-    open({ type: "contest", sel: { level: v.slice(0, i), name: v.slice(i + 1) } });
+    const v = $("#mLevel").value, i = v.indexOf("|");
+    if (!v) { toast("В отчётах не найдено регионов"); return; }
+    store.set("kpi_last_mlevel", v);
+    open({ type: "month", sel: { level: v.slice(0, i), name: v.slice(i + 1) } });
+  }
+  // ---- презентация (.pptx) по итогам месяца
+  let pptBusy = false;
+  async function pptFile() {
+    const blob = await KPI.monthPpt.build(result);
+    const d = new Date(), id = String(result.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
+    return new File([blob], `itogi_${KPI.month.MONTHS[result.Mo]}_${result.Y}_${id}.pptx`, { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+  }
+  async function presentation(share) {
+    if (pptBusy || !result || result.type !== "month") return;
+    pptBusy = true; setBusy("Собираю презентацию…");
+    try {
+      const f = await pptFile();
+      setBusy("");
+      if (share && navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f] }).catch(() => {});
+      else { download(f); toast("Презентация сохранена: " + f.name); }
+    } catch (e) { setBusy(""); toast("Не удалось собрать презентацию: " + (e.message || e)); console.error(e); }
+    pptBusy = false;
   }
   function open(obj) {
     try { result = compute(obj); } catch (e) { toast("Ошибка анализа: " + (e.message || e)); console.error(e); return; }
@@ -164,21 +186,20 @@
     const r = report.build(result, { app: true });
     const host = $("#report");
     host.innerHTML = `<style>${r.css}</style>${r.body}`;
-    addPicsTab(host);
+    if (result.type !== "month") addPicsTab(host);
     report.bind(host);
     document.title = r.title;
     $("#setup").hidden = true;
     host.hidden = false;
     $("#bar").hidden = false;
-    $("#plansBtn").hidden = result.type === "contest";
+    $("#plansBtn").hidden = result.type === "month";
+    $("#pptBtn").hidden = result.type !== "month";
     window.scrollTo(0, 0);
     if (push) history.pushState({ report: 1 }, "");
   }
   // ---- вкладка «Картинки»: отчёт в том же виде, что и картинки для рассылки
   let picsSel = null, picsCache = {}, picsSeq = 0;
   function picKinds() {
-    if (result.type === "contest") return [["csum", "Сводка", false], ["clist", { store: "Продавцы", asm: "Магазины", dsm: "ASM", company: "ASM" }[result.level], true]]
-      .filter(([k]) => k !== "clist" || result.level !== "store" || result.sellers.length);
     if (result.type === "region") return [["region", "Регион — главное", true], ["stores", "Магазины — KPI", true]];
     return [["store", "Магазин — главное", true], ["staff", "Продавцы — KPI", true]];
   }
@@ -187,10 +208,9 @@
     if (!tabs || !main) return;
     Object.values(picsCache).forEach((x) => URL.revokeObjectURL(x.url));
     picsCache = {};
-    const contest = result.type === "contest";
-    const sel = contest ? [["p1", "План 1"], ["p2", "План 2"], ["p3", "План 3"]] : [["month", "Месяц"], ["week", "Неделя"], ["day", "День"]];
+    const sel = [["month", "Месяц"], ["week", "Неделя"], ["day", "День"]];
     const rep = host.querySelector(".rep");
-    picsSel = contest ? "p1" : (rep && rep.dataset.period) || "month";
+    picsSel = (rep && rep.dataset.period) || "month";
     const btn = document.createElement("button");
     btn.className = "tb"; btn.dataset.t = "pics"; btn.textContent = "🖼 Картинки";
     tabs.children[0].after(btn);
@@ -239,7 +259,7 @@
     const html = report.standalone(result);
     const d = new Date();
     const id = String(result.code).replace(/[^\wА-Яа-яЁё-]+/g, "_");
-    const name = `${result.type === "contest" ? "konkurs_1P" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
+    const name = `${result.type === "month" ? "itogi_mesyaca" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
     return new File([html], name, { type: "text/html" });
   }
   function save() { download(reportFile()); }
@@ -248,16 +268,7 @@
   function openShare() {
     const rep = document.querySelector("#report .rep");
     const pb = document.querySelectorAll("#shPer button"), kb = document.querySelectorAll("#shKind button");
-    if (result.type === "contest") {
-      shPer = (rep && rep.dataset.plan) || "p1";
-      ["p1", "p2", "p3"].forEach((p, i) => { pb[i].dataset.p = p; pb[i].textContent = `План ${i + 1}`; });
-      shKind = shKind === "clist" ? "clist" : "csum";
-      kb[0].dataset.k = "csum"; kb[0].textContent = "Сводка";
-      kb[1].dataset.k = "clist";
-      kb[1].textContent = { store: "Продавцы", asm: "Магазины", dsm: "ASM", company: "ASM" }[result.level];
-      kb[1].hidden = result.level === "store" && !result.sellers.length;
-      if (kb[1].hidden) shKind = "csum";
-    } else {
+    {
       shPer = (rep && rep.dataset.period) || "month";
       [["month", "Месяц"], ["week", "Неделя"], ["day", "День"]].forEach(([p, t], i) => { pb[i].dataset.p = p; pb[i].textContent = t; });
       const reg = result.type === "region";
@@ -392,13 +403,14 @@
     document.querySelectorAll("#step2 .seg2 button").forEach((b) => (b.onclick = () => setMode(b.dataset.m)));
     $("#go").onclick = () => run();
     $("#goR").onclick = runRegion;
-    $("#goC").onclick = () => runContest(false);
-    $("#goCS").onclick = () => runContest(true);
-    $("#cCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runContest(true); });
+    $("#goM").onclick = () => runMonth(false);
+    $("#goMS").onclick = () => runMonth(true);
+    $("#mCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runMonth(true); });
+    $("#pptBtn").onclick = () => presentation(false);
     $("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
     $("#back").onclick = () => history.back();
     $("#save").onclick = save;
-    $("#share").onclick = openShare;
+    $("#share").onclick = () => (result && result.type === "month" ? presentation(true) : openShare());
     document.querySelectorAll("#shPer button").forEach((b) => (b.onclick = () => { shPer = b.dataset.p; renderShare(); }));
     document.querySelectorAll("#shKind button").forEach((b) => (b.onclick = () => { shKind = b.dataset.k; renderShare(); }));
     $("#shSend").onclick = sendImage;

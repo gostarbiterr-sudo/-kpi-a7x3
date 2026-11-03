@@ -437,7 +437,7 @@
   // ---------------------------------------------------------------- сборка
   const pbuttons = () => SHOW.map((p) => `<button class="pb" data-p="${p}">${PERIOD_RU[p]}</button>`).join("");
   function build(res, opts) {
-    if (res.type === "contest") return KPI.contest.build(res, CSS);
+    if (res.type === "month") return KPI.monthReport.build(res, CSS);
     opts = opts || {};
     const norms = res.norms, info = res.info || {}, code = res.code;
     const region = res.type === "region";
