@@ -1,6 +1,6 @@
 /* Офлайн-кэш приложения. Сами файлы с выгрузками сюда не попадают — только код приложения. */
-const VERSION = "kpi-v12";
-const FILES = ["./", "index.html", "manifest.webmanifest", "js/xlsx.js", "js/loader.js", "js/analysis.js", "js/report.js", "js/contest.js", "js/share.js", "js/app.js",
+const VERSION = "kpi-v13";
+const FILES = ["./", "index.html", "manifest.webmanifest", "js/xlsx.js", "js/loader.js", "js/analysis.js", "js/report.js", "js/xparse.js", "js/month.js", "js/month_an.js", "js/month_report.js", "js/month_ppt.js", "js/lib/pptxgen.bundle.js", "js/share.js", "js/app.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" })))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
