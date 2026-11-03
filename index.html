@@ -74,7 +74,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
 .pxwrap.zoom{overflow:auto;cursor:zoom-out;-webkit-overflow-scrolling:touch}.pxwrap.zoom img{width:auto;max-width:none}
 .pxact{display:flex;gap:8px;margin-top:8px}.pxact button{flex:1;font:600 14px/1.2 inherit;font-family:inherit;border-radius:12px;padding:11px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--text)}
 .pxact .pxs{background:#1f3864;color:#fff;border-color:#1f3864}
-#monthBox .mt-h{font-weight:700;margin:0 0 8px}
+#monthBox .mt-h{font-weight:700;margin:0 0 8px}#monthBox .mt-s{font-size:13px;color:var(--text2);font-weight:600;margin:12px 0 6px}
+#mPick{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg)}
+#mFilter{width:100%;box-sizing:border-box;font:16px inherit;font-family:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--text)}
+.mpl{max-height:46vh;overflow:auto;margin:8px 0}.mpl h4{margin:10px 0 4px;font-size:13px;color:var(--text2)}.mpl h4 button{font-size:12px!important;padding:2px 8px!important;margin-left:6px}
+.mpl label{display:flex;gap:8px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);font-size:15px}.mpl label small{color:var(--muted)}.mpl input{width:20px;height:20px}
+#mPick .row button{flex:1}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -102,10 +107,19 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
     </div>
     <div id="monthBox" hidden>
       <p class="mt-h" id="mTitle">Итоги месяца</p>
-      <div class="code-row"><input id="mCode" list="mCodes" placeholder="Код магазина, например A301" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button id="goMS" type="button">Магазин</button></div>
+      <p class="mt-s">Один магазин</p>
+      <div class="code-row"><input id="mCode" list="mCodes" placeholder="Код магазина, например A301" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button id="goMS" type="button">Показать</button></div>
       <datalist id="mCodes"></datalist>
-      <div class="code-row" style="margin-top:8px"><select id="mLevel"></select><button id="goM" type="button">Регион</button></div>
-      <p class="muted">Итоги прошлого месяца по магазину или по региону (ASM / дивизион): оборот, трафик, конверсия, эффективность, гросс-маржа, категории, аксессуары, сервисы и план действий. В отчёте есть кнопка «Презентация».</p>
+      <p class="mt-s">Несколько магазинов</p>
+      <button class="ghost" id="mPickBtn" type="button" style="width:100%">☑ Выбрать магазины из списка</button>
+      <div id="mPick" hidden>
+        <input id="mFilter" type="search" placeholder="Поиск: код или город" autocomplete="off">
+        <div class="mpl" id="mList"></div>
+        <div class="row"><button class="ghost" id="mNone" type="button">Снять всё</button><button id="mGo" type="button">Показать выбранные (0)</button></div>
+      </div>
+      <p class="mt-s">Регион</p>
+      <div class="code-row"><select id="mLevel"></select><button id="goM" type="button">Показать</button></div>
+      <p class="muted">Итоги прошлого месяца: оборот, трафик, конверсия, эффективность, гросс-маржа, категории, аксессуары, сервисы и план действий. «Несколько магазинов» — результаты каждого магазина рядом, без суммирования. В отчёте есть кнопка «Презентация».</p>
     </div>
     <div id="choices"></div>
     <div class="row" id="plansRow"><button class="ghost" id="plansBtn2" type="button">🎯 Планы</button></div>
