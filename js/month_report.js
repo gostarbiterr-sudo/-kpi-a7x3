@@ -232,12 +232,12 @@ td.tl{text-align:left}
   function buildMulti(R, baseCss) {
     const li = (arr, cls, n) => arr.length ? `<ul class="mli ${cls}">${arr.slice(0, n).map((x) => `<li><b>${esc(x.area)}.</b> ${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">—</p>';
     const catList = (arr, cls) => arr.length ? `<ol class="mli ${cls}">${arr.slice(0, 10).map((x) => `<li>${esc(x.name)} <b class="${x.d >= 0 ? "pos" : "neg"}">${rubS(x.d, true)}</b> <span class="muted">(${isn(x.dQty) ? `шт ${fmt(x.dQty, 0, true)}%` : ""}${isn(x.dPrice) ? `, цена ${fmt(x.dPrice, 0, true)}%` : ""})</span></li>`).join("")}</ol>` : '<p class="muted">—</p>';
-    const tabs = [["kpi", "Показатели"], ["fac", "Из чего оборот"], ["gross", "Гросс"], ["mix", "Аксессуары и услуги"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
+    const tabs = [["kpi", "Показатели"], ["gross", "Гросс"], ["mix", "Аксессуары и услуги"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
     const gTab = (r, key, title) => (r.ggroups ? `<h4>${title}</h4><ol class="mli">${r.ggroups[key].slice(0, 10).map((x) => `<li>${esc(x.name)} <b class="${x.gm >= 0 ? "pos" : "neg"}">${rubS(x.gm)}</b> <span class="muted">(${isn(x.share) ? fmt(x.share, 1) + "% гросса, " : ""}маржа ${fmt(x.pct, 1)}%)</span></li>`).join("")}</ol>` : "");
     const notes = [...new Set(R.list.flatMap((r) => r.notes))].map((n) => `<div class="banner">ℹ ${esc(n)}</div>`).join("");
     const sec = {
-      kpi: notes + multiTable(R, "kpi", `Ключевые показатели: ${R.monthLabel.toLowerCase()}`, "Результаты каждого магазина отдельно. Эффективность — рост оборота минус рост трафика к прошлому году; ниже изменения в п.п."),
-      fac: multiTable(R, "fac", "Из чего сложился оборот", "Трафик, конверсия, чеки, средний чек, средняя цена, штуки в чеке: к прошлому году и к прошлому месяцу."),
+      kpi: notes + multiTable(R, "main", `Ключевые показатели: ${R.monthLabel.toLowerCase()}`, "К прошлому году и к прошлому месяцу. Эффективность — рост оборота минус рост трафика к году.") +
+        multiCards(R, (r) => { const t = KPI.monthPpt && KPI.monthPpt.facText ? KPI.monthPpt.facText(r) : ""; return t ? `<h4>Вывод</h4><p>${esc(t)}</p>` : '<p class="muted">—</p>'; }),
       gross: multiTable(R, "gross", "Гросс-маржа", "Месяц, прошлый месяц и с начала года: в рублях и в доле от оборота.") + multiCards(R, (r) => gTab(r, "top", "Топ-10 групп по гроссу") + gTab(r, "anti", "Антитоп-10 групп по гроссу") || '<p class="muted">Нет данных по группам товаров.</p>'),
       mix: multiTable(R, "mix", "Аксессуары и услуги", "К прошлому году и к прошлому месяцу."),
       cat: multiCards(R, (r) => (r.cats ? `<h4>Топ-10 роста к прошлому месяцу</h4>${catList(r.cats.top, "good")}<h4>Топ-10 падения</h4>${catList(r.cats.anti, "bad")}` : '<p class="muted">Нет данных по подкатегориям.</p>')),

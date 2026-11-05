@@ -258,6 +258,12 @@
         if (b && isn(b.pen) && isn(t.pen) && b.pen > t.pen && res.types.goodsQty > 0) t.potential = ((b.pen - t.pen) / 100) * res.types.goodsQty * (t.price || b.price || 0);
       }
     }
+    // изменение аксессуаров и услуг к прошлому месяцу — из исторической справки (октябрь против сентября)
+    if (res.P && res.P.cur && res.P.prev) {
+      const c = res.P.cur, q = res.P.prev;
+      if (res.acc) { const t = res.acc.t; if (isn(c.acc) && isn(q.acc)) t.dPrev = pct(c.acc, q.acc); if (isn(c.accSh) && isn(q.accSh)) t.dPrevSh = pp(c.accSh, q.accSh); }
+      if (res.srv) { const t = res.srv.t; if (isn(c.srv) && isn(q.srv)) t.dPrev = pct(c.srv, q.srv); if (isn(c.srvSh) && isn(q.srvSh)) t.dPrevSh = pp(c.srvSh, q.srvSh); }
+    }
     // ---- полнота данных по магазинам выбора
     if (sel.level !== "store" && codes.length) {
       const cov = [["Гросс-маржа", M.g && (M.g.month || M.g.ytd) ? (c) => !!((M.g.month && M.g.month.stores[c]) || (M.g.ytd && M.g.ytd.stores[c])) : null],
@@ -511,13 +517,26 @@
       ["Оборот услуг", (r) => (r.srv ? { v: rubS(r.srv.t.srv), one: 1, d: [["к году", r.srv.t.yoy, "%"], ["к мес.", r.srv.t.dPrev, "%"]] } : null)],
       ["Доля услуг", (r) => (r.srv ? { v: `${fmt(r.srv.t.sh, 1)}%`, one: 1, d: [["к году", r.srv.t.dSh, " п.п."], ["к мес.", r.srv.t.dPrevSh, " п.п."]] } : kp("srvSh", (x) => `${fmt(x.cur, 1)}%`)(r))],
       ["ЧДУ", (r) => (r.types && isn(r.types.chdu) ? { v: `${fmt(r.types.chdu, 1)}%`, one: 1, d: [[`к норме ${fmt(r.norms.chdu_min, 0)}%`, r.types.chdu - r.norms.chdu_min, " п.п."], ["к мес.", r.types.dPrevChdu, " п.п."]] } : null)]];
+    if (kind === "main") {
+      const pm = (r) => M_().MONTHS_PREP[(r.Mo + 11) % 12];
+      const F = (k) => (r) => { const f = (r.factors || []).find((x) => x.k === k); if (!f) return null;
+        return { v: `${fmt(f.cur, f.d)}${f.u}`, sub: `прошлый год ${fmt(f.py, f.d)}${f.u}` + (isn(f.prev) ? ` · в ${pm(r)} ${fmt(f.prev, f.d)}${f.u}` : ""), one: 1,
+          d: [["к году", f.dPy, f.t === "pp" ? " п.п." : "%"], ["к мес.", f.dPrev, f.t === "pp" ? " п.п." : "%"]] }; };
+      return [
+        ["Оборот", (r) => { const x = row(r, "rev"), P = r.P || {}; if (!x || x.cur == null) return null;
+          return { v: rubS(x.cur), sub: [P.py && `прошлый год ${rubS(P.py.rev)}`, P.prev && `в ${pm(r)} ${rubS(P.prev.rev)}`].filter(Boolean).join(" · "), one: 1, d: [["к году", x.dPy, "%"], ["к мес.", x.dPrev, "%"]] }; }],
+        ["Трафик", F("traffic")], ["Конверсия", F("conv")],
+        ["Эффективность", (r) => { const x = row(r, "eff"); if (!x || !isn(x.dPy)) return null;
+          return { v: `${fmt(x.dPy, 1, true)}%`, one: 1, d: [["к мес.", x.dPrev, " п.п."], ["с начала года", x.dYtd, " п.п."]] }; }],
+        ["Чеки", F("checks")], ["Средний чек", F("avg")], ["Средняя цена", F("price")], ["Штук в чеке", F("upt")]];
+    }
     if (kind === "fac") return ["traffic", "conv", "checks", "avg", "price", "upt"].map((k) => [null, (r) => { const f = (r.factors || []).find((x) => x.k === k); if (!f) return null;
       const pm = M_().MONTHS_PREP[(r.Mo + 11) % 12];
       return { v: `${fmt(f.cur, f.d)}${f.u}`, sub: `прошлый год ${fmt(f.py, f.d)}${f.u}` + (isn(f.prev) ? ` · в ${pm} ${fmt(f.prev, f.d)}${f.u}` : ""), one: 1,
         d: [["к году", f.dPy, f.t === "pp" ? " п.п." : "%"], ["к мес.", f.dPrev, f.t === "pp" ? " п.п." : "%"]] }; }, k])
       .map(([, f, k]) => [{ traffic: "Трафик", conv: "Конверсия", checks: "Чеки", avg: "Средний чек", price: "Средняя цена", upt: "Штук в чеке" }[k], f]);
     if (kind === "gross") return [
-      ["Гросс за месяц", (r) => (r.gross && r.gross.month ? { v: rubS(r.gross.month.gm), sub: `${fmt(r.gross.month.pct, 1)}% оборота`, d: [["гросс к прошл. мес.", r.gross.dPrevGm, "%"], ["маржинальность", r.gross.dPrevPct, " п.п."]] } : null)],
+      ["Гросс за месяц", (r) => (r.gross && r.gross.month ? { v: rubS(r.gross.month.gm), sub: `${fmt(r.gross.month.pct, 1)}% оборота`, d: [["гросс к прошл. мес.", r.gross.dPrevGm, "%"]] } : null)],
       ["Прошлый месяц", (r) => (r.gross && r.gross.prev ? { v: rubS(r.gross.prev.gm), sub: `${fmt(r.gross.prev.pct, 1)}% оборота`, d: [] } : null)],
       ["С начала года", (r) => (r.gross && r.gross.ytd ? { v: rubS(r.gross.ytd.gm), sub: `${fmt(r.gross.ytd.pct, 1)}% оборота`, d: [] } : null)]];
     if (kind === "dec") return [["Трафик", "traffic"], ["Конверсия", "conv"], ["Средняя цена", "price"], ["Штуки в чеке", "upt"], ["Итого", "dR"]].map(([l, k]) =>

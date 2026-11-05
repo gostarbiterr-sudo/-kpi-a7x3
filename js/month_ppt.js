@@ -311,7 +311,7 @@
 
   // ---------------------------------------------------------------- несколько магазинов: результаты рядом
   // таблица «показатели × магазины»: в ячейке значение, строка-пояснение и изменения
-  function mTable(sl, rows, stores, y, maxH, big) {
+  function mTable(sl, rows, stores, y, maxH, big, compact) {
     const n = stores.length, lw = 2.3, cw = (W - 2 * M - lw) / n;
     const head = [{ text: "Показатель", options: { bold: true, color: C.white, fill: { color: C.navy }, fontSize: 12 } }].concat(stores.map((r) => ({
       text: [{ text: r.code, options: { bold: true, breakLine: true } }, { text: r.attrs ? r.attrs.city : "", options: { fontSize: 10, color: "CADCFC" } }], options: { color: C.white, fill: { color: C.navy }, fontSize: 13 } })));
@@ -320,10 +320,10 @@
       const cells = stores.map((r) => f(r));
       if (cells.every((c) => !c)) return;
       const fill = { color: body.length % 2 ? "F8FAFC" : C.white };
-      body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: 12, fill } }].concat(cells.map((c) => {
+      body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: compact ? 11 : 12, fill } }].concat(cells.map((c) => {
         if (!c) return { text: "—", options: { color: C.muted, fill } };
-        if (c.note) return { text: c.note, options: { fill, fontSize: 10.5, color: C.ink, valign: "top" } };
-        const fs = big ? [22, 13, 13, 12] : [15, 10.5, 10.5, 10];
+        if (c.note) return { text: c.note, options: { fill, fontSize: compact ? 9 : 10.5, color: C.ink, valign: "top" } };
+        const fs = big ? [22, 13, 13, 12] : compact ? [12.5, 8.5, 9, 8.5] : [15, 10.5, 10.5, 10];
         const D = c.one ? c.d.filter((x) => isn(x[1])) : c.d;
         const t = [{ text: c.v, options: { bold: true, fontSize: fs[0], color: c.sign != null ? (c.sign >= 0 ? C.good : C.bad) : C.ink, breakLine: !!(c.sub || D.length) } }];
         if (c.sub) t.push({ text: c.sub, options: { fontSize: fs[1], color: C.muted, breakLine: D.length > 0 } });
@@ -334,8 +334,9 @@
       })));
     });
     const rh = Math.min(big ? 1.35 : 0.85, (maxH || H - y - 0.7) / Math.max(1, body.length + 1));
-    sl.addTable([head].concat(body), { x: M, y, colW: [lw].concat(stores.map(() => cw)), fontFace: FONT, border: { type: "solid", pt: 0.5, color: C.line }, rowH: rh, valign: "middle", margin: [0.04, 0.1, 0.04, 0.1], autoPage: false });
-    return y + rh * (body.length + 1);
+    const fix = big || compact, hh = compact ? 0.45 : 0.6, rh2 = fix ? Math.min(big ? 1.35 : 0.85, ((maxH || H - y - 0.7) - hh) / Math.max(1, body.length)) : rh;
+    sl.addTable([head].concat(body), { x: M, y, colW: [lw].concat(stores.map(() => cw)), fontFace: FONT, border: { type: "solid", pt: 0.5, color: C.line }, rowH: fix ? [hh].concat(body.map(() => rh2)) : rh, valign: "middle", margin: compact ? [0.02, 0.1, 0.02, 0.1] : [0.04, 0.1, 0.04, 0.1], autoPage: false });
+    return fix ? y + hh + rh2 * body.length : y + rh * (body.length + 1);
   }
   function mCols(pres, sl, stores, y, fn, dark) {
     const n = stores.length, gap = 0.25, cw = (W - 2 * M - gap * (n - 1)) / n;
@@ -363,7 +364,7 @@
       const ms = [["traffic", "трафик"], ["conv", "конверсия"], ["avg", "средний чек"], ["upt", "штуки в чеке"]].map(([k, n]) => { const f = F[k]; return f && isn(f.dPrev) ? `${n} ${f.t === "pp" ? `${fmt(f.dPrev, 1, true)} п.п.` : `${fmt(f.dPrev, 1, true)}%`}` : null; }).filter(Boolean);
       t += ` К ${pm}: оборот ${fmt((r.P.cur.rev / r.P.prev.rev - 1) * 100, 1, true)}%${ms.length ? `, ${ms.join(", ")}` : ""}.`;
     }
-    return t;
+    return t.replace(/п\.п\.\./g, "п.п.");
   }
   async function buildMulti(R) {
     const P = await lib();
@@ -372,38 +373,17 @@
     pres.title = `Итоги: ${R.monthLabel} — ${R.name}`;
     pres.author = "Анализ KPI";
     const MG = KPI.month.MONTHS_GEN[R.Mo], AN = KPI.monthAn;
-    // 1. титул
-    { const sl = pres.addSlide(); sl.background = { color: C.white };
-      txt(sl, `Итоги ${MG} ${R.Y}`, M, 1.0, W - 2 * M, 0.9, { fontSize: 44, bold: true, color: C.navy });
-      txt(sl, "Результаты магазинов", M, 1.95, W - 2 * M, 0.6, { fontSize: 28, color: C.ink });
-      const L = R.list, cols = Math.min(4, L.length), cw = (W - 2 * M - 0.25 * (cols - 1)) / cols;
-      L.slice(0, 8).forEach((r, i) => {
-        const x = M + (i % cols) * (cw + 0.25), y = 3.0 + Math.floor(i / cols) * 2.0;
-        card(pres, sl, x, y, cw, 1.8, C.card);
-        txt(sl, [{ text: r.code + "  ", options: { bold: true, color: C.navy, fontSize: 20 } }, { text: r.attrs ? r.attrs.city : "", options: { color: C.muted, fontSize: 13 } }], x + 0.25, y + 0.15, cw - 0.5, 0.45, {});
-        const k = (key) => (r.kpi || []).find((q) => q.k === key);
-        const rev = k("rev");
-        if (rev) {
-          txt(sl, rubS(rev.cur), x + 0.25, y + 0.65, cw - 0.5, 0.55, { fontSize: 28, bold: true, color: C.ink });
-          txt(sl, [{ text: arrow(rev.dPy, "%"), options: { bold: true, color: colorOf(rev.dPy) } }, { text: " оборот к году   ", options: { color: C.muted } },
-            { text: r.gross && r.gross.month ? `гросс ${fmt(r.gross.month.pct, 1)}%` : "", options: { color: C.ink } }], x + 0.25, y + 1.25, cw - 0.5, 0.35, { fontSize: 12 });
-        }
-      });
-      const d = new Date();
-      txt(sl, `Сформировано ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`, M, H - 0.6, 6, 0.3, { fontSize: 11, color: C.muted }); }
     // магазины по слайдам: таблицы — до 4, списки групп — до 2 на слайд
     const split = (k) => { const pages = Math.ceil(R.list.length / k), per = Math.ceil(R.list.length / pages), out = []; for (let i = 0; i < R.list.length; i += per) out.push(R.list.slice(i, i + per)); return out; };
     const T4 = split(4), T2 = split(2);
     const sfx = (arr, k) => (arr.length > 1 ? ` (${k + 1} из ${arr.length})` : "");
-    let n = 1;
+    let n = 0;
     const foot = (sl) => { txt(sl, `Итоги: ${R.monthLabel.toLowerCase()} · ${R.name}`, M, H - 0.42, 8, 0.25, { fontSize: 10, color: C.muted }); txt(sl, String(++n), W - M - 1, H - 0.42, 1, 0.25, { fontSize: 10, color: C.muted, align: "right" }); };
     const page = (t, sub, k, arr) => { const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, t + sfx(arr, k), sub); return sl; };
-    // 2. ключевые показатели
-    T4.forEach((st, k) => { const sl = page("Ключевые показатели", `${R.monthLabel}: результаты каждого магазина. Эффективность — рост оборота минус рост трафика к году`, k, T4); mTable(sl, AN.multiRows("kpi"), st, 1.5); foot(sl); });
-    // 3. факторы оборота — данные и вывод словами
-    if (R.list.some((r) => r.factors)) T4.forEach((st, k) => {
-      const sl = page("Из чего сложился оборот", "Трафик, конверсия, чек, цена и штуки в чеке: к прошлому году и к прошлому месяцу", k, T4);
-      mTable(sl, AN.multiRows("fac").concat([["Вывод", (r) => ({ note: facConclusion(r) })]]), st, 1.5);
+    // 1. ключевые показатели и из чего сложился оборот — одна таблица и вывод
+    T4.forEach((st, k) => {
+      const sl = page(`Ключевые показатели — ${R.monthLabel.toLowerCase()}`, st.map((r) => `${r.code}${r.attrs && r.attrs.city ? " " + r.attrs.city : ""}`).join(", ") + ". К прошлому году и к прошлому месяцу; эффективность — рост оборота минус рост трафика", k, T4);
+      mTable(sl, AN.multiRows("main").concat([["Вывод", (r) => ({ note: facConclusion(r) })]]), st, 1.38, H - 1.38 - 0.5, false, true);
       foot(sl);
     });
     // 4. гросс-маржа и её влияние
@@ -474,5 +454,5 @@
     return pres.write({ outputType: browser ? "blob" : "nodebuffer", compression: true });
   }
 
-  KPI.monthPpt = { build: (res) => (res.type === "monthMulti" ? buildMulti(res) : build(res)) };
+  KPI.monthPpt = { build: (res) => (res.type === "monthMulti" ? buildMulti(res) : build(res)), facText: facConclusion };
 })(typeof globalThis !== "undefined" ? globalThis : this);
