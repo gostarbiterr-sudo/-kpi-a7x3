@@ -221,7 +221,7 @@ td.tl{text-align:left}
     const body = rows.map(([label, f]) => {
       const cells = L.map((r) => { const c = f(r); if (!c) return '<td class="mc">—</td>';
         const v = c.sign != null ? `<b class="${c.sign >= 0 ? "pos" : "neg"}">${esc(c.v)}</b>` : `<b>${esc(c.v)}</b>`;
-        return `<td class="mc">${v}${c.sub ? `<span class="muted">${esc(c.sub)}</span>` : ""}${c.d.map(([l, x, u]) => `<span>${dl(x, u)} <i>${esc(l)}</i></span>`).join("")}</td>`; });
+        return `<td class="mc">${v}${c.sub ? `<span class="muted">${esc(c.sub)}</span>` : ""}${c.one ? `<span>${c.d.filter((q) => isn(q[1])).map(([l, x, u]) => `${dl(x, u)} <i>${esc(l)}</i>`).join(" · ")}</span>` : c.d.map(([l, x, u]) => `<span>${dl(x, u)} <i>${esc(l)}</i></span>`).join("")}</td>`; });
       return cells.every((c) => c === '<td class="mc">—</td>') ? "" : `<tr><th class="rl">${esc(label)}</th>${cells.join("")}</tr>`;
     }).join("");
     return `<section class="panel"><h3>${esc(title)}</h3>${note ? `<p class="muted">${esc(note)}</p>` : ""}<div class="tw"><table class="mt mtm sticky1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
@@ -231,17 +231,17 @@ td.tl{text-align:left}
   }
   function buildMulti(R, baseCss) {
     const li = (arr, cls, n) => arr.length ? `<ul class="mli ${cls}">${arr.slice(0, n).map((x) => `<li><b>${esc(x.area)}.</b> ${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">—</p>';
-    const catList = (arr, cls) => arr.length ? `<ol class="mli ${cls}">${arr.slice(0, 7).map((x) => `<li>${esc(x.name)} <b class="${x.d >= 0 ? "pos" : "neg"}">${rubS(x.d, true)}</b> <span class="muted">(${isn(x.dQty) ? `шт ${fmt(x.dQty, 0, true)}%` : ""}${isn(x.dPrice) ? `, цена ${fmt(x.dPrice, 0, true)}%` : ""})</span></li>`).join("")}</ol>` : '<p class="muted">—</p>';
+    const catList = (arr, cls) => arr.length ? `<ol class="mli ${cls}">${arr.slice(0, 10).map((x) => `<li>${esc(x.name)} <b class="${x.d >= 0 ? "pos" : "neg"}">${rubS(x.d, true)}</b> <span class="muted">(${isn(x.dQty) ? `шт ${fmt(x.dQty, 0, true)}%` : ""}${isn(x.dPrice) ? `, цена ${fmt(x.dPrice, 0, true)}%` : ""})</span></li>`).join("")}</ol>` : '<p class="muted">—</p>';
     const tabs = [["kpi", "Показатели"], ["fac", "Из чего оборот"], ["gross", "Гросс"], ["mix", "Аксессуары и услуги"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
     const gTab = (r, key, title) => (r.ggroups ? `<h4>${title}</h4><ol class="mli">${r.ggroups[key].slice(0, 10).map((x) => `<li>${esc(x.name)} <b class="${x.gm >= 0 ? "pos" : "neg"}">${rubS(x.gm)}</b> <span class="muted">(${isn(x.share) ? fmt(x.share, 1) + "% гросса, " : ""}маржа ${fmt(x.pct, 1)}%)</span></li>`).join("")}</ol>` : "");
     const notes = [...new Set(R.list.flatMap((r) => r.notes))].map((n) => `<div class="banner">ℹ ${esc(n)}</div>`).join("");
     const sec = {
       kpi: notes + multiTable(R, "kpi", `Ключевые показатели: ${R.monthLabel.toLowerCase()}`, "Результаты каждого магазина отдельно. Эффективность — рост оборота минус рост трафика к прошлому году; ниже изменения в п.п."),
-      fac: multiTable(R, "fac", "Из чего сложился оборот", "Этот год против прошлого: трафик, конверсия, чеки, средний чек, средняя цена, штуки в чеке."),
-      gross: multiTable(R, "gross", "Гросс-маржа и её влияние", "«Почему изменился гросс» — сколько рублей гросса дал рост или падение оборота и сколько — изменение маржинальности.") + multiCards(R, (r) => gTab(r, "top", "Топ-10 групп по гроссу") + gTab(r, "anti", "Антитоп-10 групп по гроссу") || '<p class="muted">Нет данных по группам товаров.</p>'),
-      mix: multiTable(R, "mix", "Аксессуары и услуги", "К тому же месяцу прошлого года."),
-      cat: multiCards(R, (r) => (r.cats ? `<h4>Рост к прошлому месяцу</h4>${catList(r.cats.top, "good")}<h4>Падение</h4>${catList(r.cats.anti, "bad")}` : '<p class="muted">Нет данных по подкатегориям.</p>')),
-      fin: multiCards(R, (r) => `<h4>Где плохо</h4>${li(r.bad, "bad", 6)}<h4>Где хорошо</h4>${li(r.good, "good", 4)}`),
+      fac: multiTable(R, "fac", "Из чего сложился оборот", "Трафик, конверсия, чеки, средний чек, средняя цена, штуки в чеке: к прошлому году и к прошлому месяцу."),
+      gross: multiTable(R, "gross", "Гросс-маржа", "Месяц, прошлый месяц и с начала года: в рублях и в доле от оборота.") + multiCards(R, (r) => gTab(r, "top", "Топ-10 групп по гроссу") + gTab(r, "anti", "Антитоп-10 групп по гроссу") || '<p class="muted">Нет данных по группам товаров.</p>'),
+      mix: multiTable(R, "mix", "Аксессуары и услуги", "К прошлому году и к прошлому месяцу."),
+      cat: multiCards(R, (r) => (r.cats ? `<h4>Топ-10 роста к прошлому месяцу</h4>${catList(r.cats.top, "good")}<h4>Топ-10 падения</h4>${catList(r.cats.anti, "bad")}` : '<p class="muted">Нет данных по подкатегориям.</p>')),
+      fin: multiCards(R, (r) => (r.blocks || []).map((b) => `<div class="blk ${b.tone}"><b>${esc(b.area)}</b><p>${esc(b.text)}</p></div>`).join("") || '<p class="muted">—</p>'),
       plan: multiCards(R, (r) => r.actions.slice(0, 5).map((a, i) => `<div class="act ${a.prio === "Высокий" ? "bad" : a.prio === "Средний" ? "warn" : ""}"><div class="act-h"><b>${i + 1}. ${esc(a.area)}</b></div><p class="what">${esc(a.what)}</p></div>`).join("")),
     };
     const now = new Date();
@@ -254,6 +254,7 @@ ${tabs.map(([t], i) => `<section class="tab${i ? "" : " on"}" data-tab="${t}">${
   const MCSS = `
 .mtm td.mc{text-align:left;vertical-align:top;white-space:nowrap;min-width:150px}.mtm td.mc b{display:block;font-size:16px}.mtm td.mc span{display:block;font-size:12px}.mtm td.mc i{font-style:normal;color:var(--muted);display:inline}.mtm td.mc .dl{display:inline}
 .mtm th.mh{text-align:left;min-width:150px}.mtm th.mh small{display:block;font-weight:400;color:var(--muted)}
+.blk{border-left:5px solid var(--muted);padding:4px 10px;margin:8px 0}.blk.good{border-left-color:var(--good)}.blk.bad{border-left-color:var(--bad)}.blk.mix{border-left-color:#c98a00}.blk p{margin:2px 0 0}.blk.good b{color:var(--good)}.blk.bad b{color:var(--bad)}.blk.mix b{color:#c98a00}
 b.pos{color:var(--good)}b.neg{color:var(--bad)}.mcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.mcards .panel{margin:12px 0 0}.mcards h4{margin:10px 0 4px;font-size:13.5px}
 `;
 

@@ -55,10 +55,10 @@
   // таблица: head — заголовки, rows — массив строк из {t, c(цвет), b(жирный), fill}
   function table(sl, x, y, colW, head, rows, o = {}) {
     const fs = o.fontSize || 11;
-    const H_ = head.map((h, i) => ({ text: h, options: { bold: true, color: C.white, fill: { color: C.navy }, align: i ? "right" : "left", fontSize: fs, valign: "middle" } }));
+    const H_ = head.map((h, i) => ({ text: h, options: { bold: true, color: C.white, fill: { color: C.navy }, align: o.align ? o.align[i] : i ? "right" : "left", fontSize: fs, valign: "middle" } }));
     const R = rows.map((r, ri) => r.map((c, i) => {
       const cell = typeof c === "object" && c !== null ? c : { t: c };
-      return { text: cell.t == null ? "—" : String(cell.t), options: { color: cell.c || C.ink, bold: !!cell.b, fill: { color: cell.fill || (ri % 2 ? "F8FAFC" : C.white) }, align: i ? "right" : "left", fontSize: fs, valign: "middle" } };
+      return { text: cell.t == null ? "—" : String(cell.t), options: { color: cell.c || C.ink, bold: !!cell.b, fill: { color: cell.fill || (ri % 2 ? "F8FAFC" : C.white) }, align: o.align ? o.align[i] : i ? "right" : "left", fontSize: fs, valign: "middle" } };
     }));
     sl.addTable([H_].concat(R), { x, y, colW, fontFace: FONT, border: { type: "solid", pt: 0.5, color: C.line }, rowH: o.rowH || 0.3, margin: [0.03, 0.08, 0.03, 0.08], autoPage: false });
   }
@@ -264,6 +264,7 @@
     }
     return n;
   }
+  const dedupe = (it) => it.text.toLowerCase().startsWith(it.area.toLowerCase().split(" ")[0]);
   function sFindings(pres, res, n) {
     const sl = pres.addSlide(); sl.background = { color: C.white };
     title(sl, "Где хорошо и где плохо", "Главное по итогам месяца");
@@ -273,7 +274,7 @@
       txt(sl, head, x + 0.25, 1.65, half - 0.5, 0.35, { fontSize: 18, bold: true, color });
       const items = arr.slice(0, 6);
       if (!items.length) { txt(sl, "—", x + 0.25, 2.1, half - 0.5, 0.3, { fontSize: 13, color: C.muted }); return; }
-      txt(sl, items.map((it, i) => [{ text: it.area + ". ", options: { bold: true, bullet: true } }, { text: it.text, options: { breakLine: i < items.length - 1 } }]).flat(), x + 0.25, 2.1, half - 0.5, 4.6, { fontSize: 12, paraSpaceAfter: 6, color: C.ink, fit: "shrink" });
+      txt(sl, items.map((it, i) => (dedupe(it) ? [{ text: it.text, options: { bullet: true, breakLine: i < items.length - 1 } }] : [{ text: it.area + ". ", options: { bold: true, bullet: true } }, { text: it.text, options: { breakLine: i < items.length - 1 } }])).flat(), x + 0.25, 2.1, half - 0.5, 4.6, { fontSize: 12, paraSpaceAfter: 6, color: C.ink, fit: "shrink" });
     };
     col(res.bad, M, "Где плохо", C.bad, "FDF2F2");
     col(res.good, M + half + 0.4, "Где хорошо", C.good, "EEF8F0");
@@ -310,7 +311,7 @@
 
   // ---------------------------------------------------------------- несколько магазинов: результаты рядом
   // таблица «показатели × магазины»: в ячейке значение, строка-пояснение и изменения
-  function mTable(sl, rows, stores, y, maxH) {
+  function mTable(sl, rows, stores, y, maxH, big) {
     const n = stores.length, lw = 2.3, cw = (W - 2 * M - lw) / n;
     const head = [{ text: "Показатель", options: { bold: true, color: C.white, fill: { color: C.navy }, fontSize: 12 } }].concat(stores.map((r) => ({
       text: [{ text: r.code, options: { bold: true, breakLine: true } }, { text: r.attrs ? r.attrs.city : "", options: { fontSize: 10, color: "CADCFC" } }], options: { color: C.white, fill: { color: C.navy }, fontSize: 13 } })));
@@ -322,13 +323,17 @@
       body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: 12, fill } }].concat(cells.map((c) => {
         if (!c) return { text: "—", options: { color: C.muted, fill } };
         if (c.note) return { text: c.note, options: { fill, fontSize: 10.5, color: C.ink, valign: "top" } };
-        const t = [{ text: c.v, options: { bold: true, fontSize: 15, color: c.sign != null ? (c.sign >= 0 ? C.good : C.bad) : C.ink, breakLine: !!(c.sub || c.d.length) } }];
-        if (c.sub) t.push({ text: c.sub, options: { fontSize: 10.5, color: C.muted, breakLine: c.d.length > 0 } });
-        c.d.forEach(([l, v, u], i) => { t.push({ text: arrow(v, u) + " ", options: { bold: true, fontSize: 10.5, color: colorOf(v) } }); t.push({ text: l, options: { fontSize: 10, color: C.muted, breakLine: i < c.d.length - 1 } }); });
+        const fs = big ? [22, 13, 13, 12] : [15, 10.5, 10.5, 10];
+        const D = c.one ? c.d.filter((x) => isn(x[1])) : c.d;
+        const t = [{ text: c.v, options: { bold: true, fontSize: fs[0], color: c.sign != null ? (c.sign >= 0 ? C.good : C.bad) : C.ink, breakLine: !!(c.sub || D.length) } }];
+        if (c.sub) t.push({ text: c.sub, options: { fontSize: fs[1], color: C.muted, breakLine: D.length > 0 } });
+        D.forEach(([l, v, u], i) => {
+          if (c.one && i) t.push({ text: "  ·  ", options: { fontSize: fs[3], color: C.muted } });
+          t.push({ text: arrow(v, u) + " ", options: { bold: true, fontSize: fs[2], color: colorOf(v) } }); t.push({ text: l, options: { fontSize: fs[3], color: C.muted, breakLine: !c.one && i < D.length - 1 } }); });
         return { text: t, options: { fill } };
       })));
     });
-    const rh = Math.min(0.85, (maxH || H - y - 0.7) / Math.max(1, body.length + 1));
+    const rh = Math.min(big ? 1.35 : 0.85, (maxH || H - y - 0.7) / Math.max(1, body.length + 1));
     sl.addTable([head].concat(body), { x: M, y, colW: [lw].concat(stores.map(() => cw)), fontFace: FONT, border: { type: "solid", pt: 0.5, color: C.line }, rowH: rh, valign: "middle", margin: [0.04, 0.1, 0.04, 0.1], autoPage: false });
     return y + rh * (body.length + 1);
   }
@@ -352,16 +357,12 @@
       const s = `${n} ${f.t === "pp" ? `${fmt(f.dPy, 1, true)} п.п.` : `${fmt(f.dPy, 1, true)}%`}`;
       (f.dPy >= 0 ? up : down).push(s);
     }
-    return `Оборот ${fmt(d, 1, true)}% к прошлому году.` + (up.length ? ` Помогли: ${up.join(", ")}.` : "") + (down.length ? ` Тянули вниз: ${down.join(", ")}.` : "");
-  }
-  function grossConclusion(r) {
-    const g = r.gross; if (!g || !g.month) return "Нет данных по гросс-марже.";
-    let t = `Гросс ${rubS(g.month.gm)} — ${fmt(g.month.pct, 1)}% оборота`;
-    if (isn(g.dPrevPct)) t += `, маржинальность ${fmt(g.dPrevPct, 1, true)} п.п. к прошлому месяцу`;
-    t += ".";
-    if (isn(g.effRev)) t += ` Гросс ${rubS(g.dGm, true)}: из-за оборота ${rubS(g.effRev, true)}, из-за маржинальности ${rubS(g.effPct, true)}.`;
-    if (r.ggroups && r.ggroups.top.length) t += ` Основной гросс: ${r.ggroups.top.slice(0, 3).map((x) => x.name).join(", ")}.`;
-    if (r.ggroups && r.ggroups.neg.length) t += ` В минус: ${r.ggroups.neg.slice(0, 3).map((x) => `${x.name} (${rubS(x.gm)})`).join(", ")}.`;
+    let t = `Оборот ${fmt(d, 1, true)}% к прошлому году.` + (up.length ? ` Помогли: ${up.join(", ")}.` : "") + (down.length ? ` Тянули вниз: ${down.join(", ")}.` : "");
+    if (r.P.prev && r.P.prev.rev) {
+      const pm = KPI.month.MONTHS_GEN[(r.Mo + 11) % 12].replace(/я$/, "ю").replace(/а$/, "у");
+      const ms = [["traffic", "трафик"], ["conv", "конверсия"], ["avg", "средний чек"], ["upt", "штуки в чеке"]].map(([k, n]) => { const f = F[k]; return f && isn(f.dPrev) ? `${n} ${f.t === "pp" ? `${fmt(f.dPrev, 1, true)} п.п.` : `${fmt(f.dPrev, 1, true)}%`}` : null; }).filter(Boolean);
+      t += ` К ${pm}: оборот ${fmt((r.P.cur.rev / r.P.prev.rev - 1) * 100, 1, true)}%${ms.length ? `, ${ms.join(", ")}` : ""}.`;
+    }
     return t;
   }
   async function buildMulti(R) {
@@ -401,14 +402,14 @@
     T4.forEach((st, k) => { const sl = page("Ключевые показатели", `${R.monthLabel}: результаты каждого магазина. Эффективность — рост оборота минус рост трафика к году`, k, T4); mTable(sl, AN.multiRows("kpi"), st, 1.5); foot(sl); });
     // 3. факторы оборота — данные и вывод словами
     if (R.list.some((r) => r.factors)) T4.forEach((st, k) => {
-      const sl = page("Из чего сложился оборот", "Трафик, конверсия, чек, цена и штуки в чеке: этот год против прошлого", k, T4);
+      const sl = page("Из чего сложился оборот", "Трафик, конверсия, чек, цена и штуки в чеке: к прошлому году и к прошлому месяцу", k, T4);
       mTable(sl, AN.multiRows("fac").concat([["Вывод", (r) => ({ note: facConclusion(r) })]]), st, 1.5);
       foot(sl);
     });
     // 4. гросс-маржа и её влияние
     if (R.list.some((r) => r.gross)) T4.forEach((st, k) => {
-      const sl = page("Гросс-маржа", "Сколько заработали на продажах и почему изменилось к прошлому месяцу", k, T4);
-      mTable(sl, AN.multiRows("gross").concat([["Вывод", (r) => ({ note: grossConclusion(r) })]]), st, 1.5);
+      const sl = page("Гросс-маржа", "Сколько заработали на продажах: месяц, прошлый месяц, с начала года", k, T4);
+      mTable(sl, AN.multiRows("gross"), st, 1.5, null, true);
       foot(sl);
     });
     // 5–6. гросс по группам товаров: топ-10 и антитоп-10
@@ -431,28 +432,31 @@
     }
     // 7. категории (оборот): рост и падение
     if (R.list.some((r) => r.cats)) T4.forEach((st, k) => {
-      const sl = page("Оборот по категориям", `${R.monthLabel} к прошлому месяцу: что выросло и что упало`, k, T4);
-      mCols(pres, sl, st, 1.5, (r, x, y, w, h) => {
-        if (!r.cats) { txt(sl, "Нет данных", x, y, w, 0.3, { fontSize: 12, color: C.muted }); return; }
-        const L = (arr) => arr.slice(0, 5).map((c, i, a) => [{ text: short(c.name, Math.round(w * 7)) + "  ", options: {} }, { text: rubS(c.d, true), options: { bold: true, color: c.d >= 0 ? C.good : C.bad, breakLine: i < a.length - 1 } }]).flat();
-        txt(sl, "Рост", x, y, w, 0.28, { fontSize: 13, bold: true, color: C.good });
-        if (r.cats.top.length) txt(sl, L(r.cats.top), x, y + 0.32, w, h / 2 - 0.4, { fontSize: 12, paraSpaceAfter: 4 });
-        txt(sl, "Падение", x, y + h / 2, w, 0.28, { fontSize: 13, bold: true, color: C.bad });
-        if (r.cats.anti.length) txt(sl, L(r.cats.anti), x, y + h / 2 + 0.32, w, h / 2 - 0.4, { fontSize: 12, paraSpaceAfter: 4 });
+      const sl = page("Оборот по категориям", `${R.monthLabel} к прошлому месяцу: топ-10 роста и топ-10 падения, в рублях`, k, T4);
+      const gap = 0.3, cw = (W - 2 * M - gap * (st.length - 1)) / st.length;
+      st.forEach((r, i) => {
+        const x = M + i * (cw + gap);
+        txt(sl, [{ text: r.code + "  ", options: { bold: true, color: C.navy } }, { text: r.attrs ? r.attrs.city : "", options: { color: C.muted, fontSize: 12 } }], x, 1.45, cw, 0.35, { fontSize: 16 });
+        if (!r.cats) { txt(sl, "Нет данных по категориям", x, 1.9, cw, 0.3, { fontSize: 12, color: C.muted }); return; }
+        const num = st.length > 2 ? 0.95 : 1.15, nw = (cw - 2 * num) / 2;
+        const rows = Array.from({ length: 10 }, (_, j) => { const a = r.cats.top[j], b = r.cats.anti[j];
+          return [a ? a.name : "", a ? { t: rubS(a.d, true), c: C.good, b: true } : "", b ? b.name : "", b ? { t: rubS(b.d, true), c: C.bad, b: true } : ""]; });
+        table(sl, x, 1.85, [nw, num, nw, num], ["Рост", "₽", "Падение", "₽"], rows, { fontSize: st.length > 2 ? 9 : 10.5, rowH: 0.45, align: ["left", "right", "left", "right"] });
       });
       foot(sl);
     });
     // 8. аксессуары и услуги
-    if (R.list.some((r) => r.acc || r.srv)) T4.forEach((st, k) => { const sl = page("Аксессуары и услуги", "К тому же месяцу прошлого года", k, T4); mTable(sl, AN.multiRows("mix").slice(1), st, 1.5); foot(sl); });
+    if (R.list.some((r) => r.acc || r.srv)) T4.forEach((st, k) => { const sl = page("Аксессуары и услуги", "К прошлому году и к прошлому месяцу", k, T4); mTable(sl, AN.multiRows("mix").slice(1), st, 1.5); foot(sl); });
     // 9. где хорошо и где плохо — полностью, без сокращений
     T2.forEach((st, k) => {
-      const sl = page("Где хорошо и где плохо", "Главное по каждому магазину", k, T2);
+      const sl = page("Где хорошо и где плохо", "По блокам: ● зелёный — хорошо, ● красный — плохо, ● жёлтый — по-разному", k, T2);
+      const TC = { good: C.good, bad: C.bad, mix: "C98A00" };
       mCols(pres, sl, st, 1.5, (r, x, y, w, h) => {
-        const nb = st.length === 1 ? 6 : 4, ng = st.length === 1 ? 4 : 3;
-        const B = r.bad.slice(0, nb), G2 = r.good.slice(0, ng);
-        const t = [{ text: "Плохо", options: { bold: true, color: C.bad, breakLine: true } }].concat(B.map((b) => ({ text: `${b.area}: ${b.text}`, options: { bullet: true, breakLine: true } })))
-          .concat([{ text: "Хорошо", options: { bold: true, color: C.good, breakLine: true } }]).concat(G2.map((g, i) => ({ text: `${g.area}: ${g.text}`, options: { bullet: true, breakLine: i < G2.length - 1 } })));
-        txt(sl, t, x, y, w, h, { fontSize: 10.5, paraSpaceAfter: 3, fit: "shrink" });
+        const Bk = r.blocks || [];
+        if (!Bk.length) { txt(sl, "Нет данных", x, y, w, 0.3, { fontSize: 12, color: C.muted }); return; }
+        const t = Bk.map((b, i) => [{ text: "● ", options: { color: TC[b.tone] || C.muted, bold: true } }, { text: b.area, options: { bold: true, color: TC[b.tone] || C.ink, breakLine: true } },
+          { text: b.text, options: { color: C.ink, breakLine: i < Bk.length - 1 } }]).flat();
+        txt(sl, t, x, y - 0.05, w, h + 0.1, { fontSize: st.length > 2 ? 9.5 : 11, paraSpaceAfter: 5, fit: "shrink", valign: "top" });
       });
       foot(sl);
     });
