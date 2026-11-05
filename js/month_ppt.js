@@ -89,6 +89,12 @@
   function sKpi(pres, res, n) {
     if (!res.kpi) return n;
     const sl = pres.addSlide(); sl.background = { color: C.white };
+    const RG = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
+    if (RG) {   // магазин рядом с регионом: одна таблица показателей и факторов
+      title(sl, "Ключевые показатели и из чего сложился оборот", `${res.monthLabel}: магазин и ${RG.code.replace("Регион", "регион")} — к прошлому году и к прошлому месяцу`);
+      mTable(sl, KPI.monthAn.multiRows("main").concat([["Вывод", (r) => ({ note: facConclusion(r) })]]), [res, RG], 1.38, H - 1.38 - 0.5, false, true);
+      footer(sl, res, ++n); return n;
+    }
     const region = res.level !== "store";
     title(sl, "Ключевые показатели", `${res.monthLabel}: к прошлому месяцу, к прошлому году${region ? ", LfL" : " и с начала года"}`);
     const r = (k) => res.kpi.find((x) => x.k === k);
@@ -112,11 +118,13 @@
     footer(sl, res, ++n); return n;
   }
   function sDrivers(pres, res, n) {
+    const RG = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
+    if (RG && !res.series) return n;
     if (!res.factors && !res.series) return n;
     const sl = pres.addSlide(); sl.background = { color: C.white };
-    title(sl, "Из чего сложился оборот", "Трафик, конверсия, чек, цена и штуки в чеке: этот год против прошлого; справа — оборот по месяцам");
-    const lw = res.series ? 6.3 : W - 2 * M;
-    if (res.factors) {
+    title(sl, RG ? "Оборот по месяцам" : "Из чего сложился оборот", RG ? "Этот год против прошлого, млн ₽" : "Трафик, конверсия, чек, цена и штуки в чеке: этот год против прошлого; справа — оборот по месяцам");
+    const lw = RG ? 0 : res.series ? 6.3 : W - 2 * M;
+    if (res.factors && !RG) {
       const MN = KPI.month.MONTHS[res.Mo];
       const rows = res.factors.map((f) => [f.label, `${fmt(f.cur, f.d)}${f.u}`, `${fmt(f.py, f.d)}${f.u}`, dCell(f.dPy, f.t === "pp" ? " п.п." : "%"), dCell(f.dPrev, f.t === "pp" ? " п.п." : "%")]);
       const R = res.P;
@@ -136,7 +144,7 @@
     if (res.series) {
       const MS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
       const [a, b] = res.series;
-      const x0 = res.factors ? M + lw + 0.4 : M, w0 = W - M - x0;
+      const x0 = res.factors && !RG ? M + lw + 0.4 : M, w0 = W - M - x0;
       sl.addChart(pres.charts.BAR, [{ name: String(a.year), labels: MS, values: a.rev.map((v) => (isn(v) ? +(v / 1e6).toFixed(2) : 0)) }, { name: String(b.year), labels: MS, values: b.rev.map((v) => (isn(v) ? +(v / 1e6).toFixed(2) : 0)) }], {
         x: x0, y: 1.5, w: w0, h: 4.4, barDir: "col", barGapWidthPct: 60, chartColors: [C.prev, C.navy], showLegend: true, legendPos: "b", legendFontFace: FONT, legendFontSize: 11,
         catAxisLabelFontFace: FONT, catAxisLabelFontSize: 10, catAxisLabelColor: C.muted, valAxisLabelFontFace: FONT, valAxisLabelFontSize: 10, valAxisLabelColor: C.muted,
@@ -160,7 +168,11 @@
     });
     const lines = [];
     if (g.prev && g.month) lines.push([{ text: "К прошлому месяцу: ", options: { bold: true } }, { text: `маржинальность ${arrow(g.dPrevPct, " п.п.")}`, options: { bold: true, color: colorOf(g.dPrevPct) } }, { text: ", гросс в рублях " }, { text: arrow(g.dPrevGm, "%"), options: { bold: true, color: colorOf(g.dPrevGm) } },
-      { text: isn(g.benchPct) && res.bench ? ` · среднее по ${res.bench.name}: ${fmt(g.benchPct, 1)}%` : "", options: { color: C.muted, breakLine: true } }]);
+      { text: "", options: { breakLine: true } }]);
+    const RGg = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
+    if (RGg && RGg.gross && RGg.gross.month) { const q = RGg.gross;
+      lines.push([{ text: `${RGg.code}: `, options: { bold: true } }, { text: `${fmt(q.month.pct, 1)}% за месяц` + (q.ytd ? `, ${fmt(q.ytd.pct, 1)}% с начала года` : "") + (isn(q.dPrevGm) ? `, гросс к прошлому месяцу ${fmt(q.dPrevGm, 1, true)}%` : "") + " · у магазина ", options: { color: C.ink } },
+        { text: `${g.month.pct >= q.month.pct ? "выше" : "ниже"} на ${fmt(Math.abs(g.month.pct - q.month.pct), 1)} п.п.`, options: { bold: true, color: g.month.pct >= q.month.pct ? C.good : C.bad, breakLine: true } }]); }
     if (isn(g.effRev)) lines.push([{ text: "Почему изменился гросс: ", options: { bold: true } }, { text: `${rubS(g.dGm, true)} всего; из-за оборота `, options: {} }, { text: rubS(g.effRev, true), options: { bold: true, color: colorOf(g.effRev) } },
       { text: ", из-за маржинальности " }, { text: rubS(g.effPct, true), options: { bold: true, color: colorOf(g.effPct), breakLine: true } }]);
     if (res.ggroups) {
@@ -171,13 +183,15 @@
     footer(sl, res, ++n);
     if (res.ggroups) {
       const s2 = pres.addSlide(); s2.background = { color: C.white };
-      title(s2, "Гросс по группам товаров", "Топ-10 и антитоп-10 групп за месяц: гросс в рублях, доля в общем гроссе и маржа");
-      const half = (W - 2 * M - 0.4) / 2, nw = half - 3.5;
+      const ra = RGg && RGg.ggroups ? RGg.ggroups.all : null;
+      title(s2, "Гросс по группам товаров", ra ? "Топ-10 и антитоп-10 групп: гросс, доля в гроссе, маржа магазина (зелёная — выше региона, красная — ниже) и региона" : "Топ-10 и антитоп-10 групп за месяц: гросс в рублях, доля в общем гроссе и маржа");
+      const half = (W - 2 * M - 0.4) / 2, nw = half - (ra ? 4.4 : 3.5);
       for (const [i, key, t, col] of [[0, "top", "Топ-10: где зарабатываем больше всего", C.good], [1, "anti", "Антитоп-10: где зарабатываем меньше всего", C.bad]]) {
         const x = M + i * (half + 0.4);
         txt(s2, t, x, 1.45, half, 0.3, { fontSize: 14, bold: true, color: col });
-        table(s2, x, 1.85, [nw, 1.25, 1.0, 1.25], ["Группа товаров", "Гросс", "Доля", "Маржа"], res.ggroups[key].slice(0, 10).map((x2) => [short(x2.name, Math.round(nw * 12)), { t: rubS(x2.gm), c: x2.gm < 0 ? C.bad : key === "top" ? C.good : C.ink, b: true },
-          isn(x2.share) ? `${fmt(x2.share, 1)}%` : "—", { t: isn(x2.pct) ? `${fmt(x2.pct, 1)}%` : "—", c: isn(x2.pct) && x2.pct < 0 ? C.bad : C.ink }]), { fontSize: 11, rowH: 0.38 });
+        table(s2, x, 1.85, ra ? [nw, 1.15, 0.9, 1.05, 1.3] : [nw, 1.25, 1.0, 1.25], ["Группа товаров", "Гросс", "Доля", "Маржа"].concat(ra ? ["Маржа рег."] : []), res.ggroups[key].slice(0, 10).map((x2) => [x2.name, { t: rubS(x2.gm), c: x2.gm < 0 ? C.bad : key === "top" ? C.good : C.ink, b: true },
+          isn(x2.share) ? `${fmt(x2.share, 1)}%` : "—", { t: isn(x2.pct) ? `${fmt(x2.pct, 1)}%` : "—", c: isn(x2.pct) && x2.pct < 0 ? C.bad : ra && isn(x2.pct) && isn(ra[x2.id]) ? (x2.pct >= ra[x2.id] ? C.good : C.bad) : C.ink, b: !!ra }]
+          .concat(ra ? [{ t: isn(ra[x2.id]) ? `${fmt(ra[x2.id], 1)}%` : "—", c: C.muted }] : [])), { fontSize: 10, rowH: 0.42 });
       }
       footer(s2, res, ++n);
     }
@@ -201,11 +215,13 @@
     const a = res.acc; if (!a) return n;
     const sl = pres.addSlide(); sl.background = { color: C.white };
     const t = a.t, b = res.accBench && res.accBench.t;
-    title(sl, "Аксессуары", `${res.monthLabel} к тому же месяцу прошлого года`);
-    const cards = [["Оборот аксессуаров", rubS(t.acc), [["к прошл. году", t.yoy, "%"]]], ["Доля аксессуаров", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."]].concat(b && isn(b.sh) ? [[`к ${res.bench.name}`, t.sh - b.sh, " п.п."]] : [])],
-      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошл. году", t.dAtt, " п.п."]]]];
+    title(sl, "Аксессуары", `${res.monthLabel}: к прошлому году, к прошлому месяцу и к региону`);
+    const rn = res.bench ? `регион ${res.bench.name}` : "";
+    const cards = [["Оборот аксессуаров", rubS(t.acc), [["к прошл. году", t.yoy, "%"], ["к прошл. месяцу", t.dPrev, "%"]], b && isn(b.yoy) ? `${rn}: ${fmt(b.yoy, 1, true)}% к году` : ""],
+      ["Доля аксессуаров", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."], ["к региону", b && isn(b.sh) ? t.sh - b.sh : null, " п.п."]], b && isn(b.sh) ? `${rn}: ${fmt(b.sh, 1)}%` : ""],
+      ["Аттач (розница)", isn(t.att) ? `${fmt(t.att, 1)}%` : "—", [["к прошл. году", t.dAtt, " п.п."], ["к региону", b && isn(b.att) && isn(t.att) ? t.att - b.att : null, " п.п."]], b && isn(b.att) ? `${rn}: ${fmt(b.att, 1)}%` : ""]];
     const cw = (W - 2 * M - 0.5) / 3;
-    cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.65, c[0], c[1], c[2]));
+    cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.75, c[0], c[1], c[2], c[3]));
     txt(sl, "По категориям: что растёт и что падает", M, 3.4, W - 2 * M, 0.3, { fontSize: 14, bold: true, color: C.navy });
     const hasAtt = a.eco.some((e) => isn(e.att));
     table(sl, M, 3.75, hasAtt ? [3.6, 1.7, 1.7, 1.1, 1.3, 1.3, 1.53] : [4.0, 1.9, 1.9, 1.3, 1.55, 1.58], ["Категория", "Оборот АКС", "Изменение, ₽", "%", "Доля АКС", "Δ доли"].concat(hasAtt ? ["Аттач"] : []),
@@ -215,12 +231,15 @@
   function sSrv(pres, res, n) {
     const s = res.srv, T = res.types; if (!s && !T) return n;
     const sl = pres.addSlide(); sl.background = { color: C.white };
-    title(sl, "Сервисы", "За счёт каких категорий растут или падают услуги (к прошлому году)");
+    title(sl, "Сервисы", "К прошлому году, к прошлому месяцу и к региону; ниже — за счёт каких категорий растут или падают услуги");
     const cw = (W - 2 * M - 0.5) / 3;
     if (s) {
       const t = s.t, b = res.srvBench && res.srvBench.t;
-      const cards = [["Оборот услуг", rubS(t.srv), [["к прошл. году", t.yoy, "%"]]], ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."]].concat(b && isn(b.sh) ? [[`к ${res.bench.name}`, t.sh - b.sh, " п.п."]] : [])], ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", T && isn(T.chdu) ? [["к норме " + fmt(res.norms.chdu_min, 0) + "%", T.chdu - res.norms.chdu_min, " п.п."]] : []]];
-      cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.65, c[0], c[1], c[2]));
+      const rn = res.bench ? `регион ${res.bench.name}` : "", tb = res.typesBench;
+      const cards = [["Оборот услуг", rubS(t.srv), [["к прошл. году", t.yoy, "%"], ["к прошл. месяцу", t.dPrev, "%"]], b && isn(b.yoy) ? `${rn}: ${fmt(b.yoy, 1, true)}% к году` : ""],
+        ["Доля услуг", `${fmt(t.sh, 1)}%`, [["к прошл. году", t.dSh, " п.п."], ["к региону", b && isn(b.sh) ? t.sh - b.sh : null, " п.п."]], b && isn(b.sh) ? `${rn}: ${fmt(b.sh, 1)}%` : ""],
+        ["ЧДУ", T && isn(T.chdu) ? `${fmt(T.chdu, 1)}%` : "—", T && isn(T.chdu) ? [["к норме " + fmt(res.norms.chdu_min, 0) + "%", T.chdu - res.norms.chdu_min, " п.п."], ["к региону", tb && isn(tb.chdu) ? T.chdu - tb.chdu : null, " п.п."]] : [], tb && isn(tb.chdu) ? `${rn}: ${fmt(tb.chdu, 1)}%` : ""]];
+      cards.forEach((c, i) => kpiCard(pres, sl, M + i * (cw + 0.25), 1.5, cw, 1.75, c[0], c[1], c[2], c[3]));
       const L = s.eco.filter((e) => e.srv || e.srvPY).sort((a, b) => a.d - b.d).slice(0, 8);
       table(sl, M, 3.5, [4.0, 1.9, 1.9, 1.3, 1.55, 1.58], ["Категория", "Оборот услуг", "Изменение, ₽", "%", "Доля", "Δ доли"],
         L.map((e) => [e.name, rubS(e.srv), { t: rubS(e.d, true), c: e.d >= 0 ? C.good : C.bad, b: true }, dCell(e.yoy, "%", 0), isn(e.sh) ? `${fmt(e.sh, 1)}%` : "—", dCell(e.dSh, " п.п.")]), { fontSize: 11 });
@@ -314,15 +333,16 @@
   function mTable(sl, rows, stores, y, maxH, big, compact) {
     const n = stores.length, lw = 2.3, cw = (W - 2 * M - lw) / n;
     const head = [{ text: "Показатель", options: { bold: true, color: C.white, fill: { color: C.navy }, fontSize: 12 } }].concat(stores.map((r) => ({
-      text: [{ text: r.code, options: { bold: true, breakLine: true } }, { text: r.attrs ? r.attrs.city : "", options: { fontSize: 10, color: "CADCFC" } }], options: { color: C.white, fill: { color: C.navy }, fontSize: 13 } })));
+      text: [{ text: r.code, options: { bold: true, breakLine: true } }, { text: r.attrs ? r.attrs.city : "", options: { fontSize: 10, color: "CADCFC" } }], options: { color: C.white, fill: { color: r.isRegion ? "4A6FA5" : C.navy }, fontSize: 13 } })));
     const body = [];
     rows.forEach(([label, f]) => {
       const cells = stores.map((r) => f(r));
       if (cells.every((c) => !c)) return;
-      const fill = { color: body.length % 2 ? "F8FAFC" : C.white };
-      body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: compact ? 11 : 12, fill } }].concat(cells.map((c) => {
+      const fill0 = { color: body.length % 2 ? "F8FAFC" : C.white }, fill = fill0;
+      body.push([{ text: label, options: { bold: true, color: C.ink, fontSize: compact ? 11 : 12, fill } }].concat(cells.map((c, ci) => {
+        const fill = stores[ci].isRegion ? { color: body.length % 2 ? "E6EDF7" : "EEF3FA" } : fill0;
         if (!c) return { text: "—", options: { color: C.muted, fill } };
-        if (c.note) return { text: c.note, options: { fill, fontSize: compact ? 9 : 10.5, color: C.ink, valign: "top" } };
+        if (c.note) return { text: c.note, options: { fill, fontSize: compact ? (stores.length > 2 ? 8.5 : 9) : 10.5, color: C.ink, valign: "top" } };
         const fs = big ? [22, 13, 13, 12] : compact ? [12.5, 8.5, 9, 8.5] : [15, 10.5, 10.5, 10];
         const D = c.one ? c.d.filter((x) => isn(x[1])) : c.d;
         const t = [{ text: c.v, options: { bold: true, fontSize: fs[0], color: c.sign != null ? (c.sign >= 0 ? C.good : C.bad) : C.ink, breakLine: !!(c.sub || D.length) } }];
@@ -348,10 +368,11 @@
     });
   }
   // короткий вывод по факторам оборота — словами, из данных таблицы
-  function facConclusion(r) {
+  function facConclusion(r, brief) {
     const F = {}; (r.factors || []).forEach((f) => (F[f.k] = f));
     if (!r.P || !r.P.cur || !r.P.py) return "";
     const d = (r.P.cur.rev / r.P.py.rev - 1) * 100;
+    if (r.isRegion) return `Регион: оборот ${fmt(d, 1, true)}% к году` + (r.P.prev && r.P.prev.rev ? `, ${fmt((r.P.cur.rev / r.P.prev.rev - 1) * 100, 1, true)}% к прошлому месяцу` : "") + ".";
     const up = [], down = [];
     for (const [k, n] of [["traffic", "трафик"], ["conv", "конверсия"], ["price", "средняя цена"], ["upt", "штуки в чеке"]]) {
       const f = F[k]; if (!f || !isn(f.dPy)) continue;
@@ -362,7 +383,7 @@
     if (r.P.prev && r.P.prev.rev) {
       const pm = KPI.month.MONTHS_GEN[(r.Mo + 11) % 12].replace(/я$/, "ю").replace(/а$/, "у");
       const ms = [["traffic", "трафик"], ["conv", "конверсия"], ["avg", "средний чек"], ["upt", "штуки в чеке"]].map(([k, n]) => { const f = F[k]; return f && isn(f.dPrev) ? `${n} ${f.t === "pp" ? `${fmt(f.dPrev, 1, true)} п.п.` : `${fmt(f.dPrev, 1, true)}%`}` : null; }).filter(Boolean);
-      t += ` К ${pm}: оборот ${fmt((r.P.cur.rev / r.P.prev.rev - 1) * 100, 1, true)}%${ms.length ? `, ${ms.join(", ")}` : ""}.`;
+      t += ` К ${pm}: оборот ${fmt((r.P.cur.rev / r.P.prev.rev - 1) * 100, 1, true)}%${ms.length && !brief ? `, ${ms.join(", ")}` : ""}.`;
     }
     return t.replace(/п\.п\.\./g, "п.п.");
   }
@@ -375,7 +396,11 @@
     const MG = KPI.month.MONTHS_GEN[R.Mo], AN = KPI.monthAn;
     // магазины по слайдам: таблицы — до 4, списки групп — до 2 на слайд
     const split = (k) => { const pages = Math.ceil(R.list.length / k), per = Math.ceil(R.list.length / pages), out = []; for (let i = 0; i < R.list.length; i += per) out.push(R.list.slice(i, i + per)); return out; };
-    const T4 = split(4), T2 = split(2);
+    const T2 = split(2);
+    // колонка «Регион»: итоги региона (ASM) магазинов страницы
+    const regs = (st) => [...new Set(st.map((r) => AN.regionOf(r)).filter(Boolean))];
+    const T4 = R.list.some((r) => AN.regionOf(r)) ? split(3) : split(4);
+    const wr = (st) => st.concat(regs(st));
     const sfx = (arr, k) => (arr.length > 1 ? ` (${k + 1} из ${arr.length})` : "");
     let n = 0;
     const foot = (sl) => { txt(sl, `Итоги: ${R.monthLabel.toLowerCase()} · ${R.name}`, M, H - 0.42, 8, 0.25, { fontSize: 10, color: C.muted }); txt(sl, String(++n), W - M - 1, H - 0.42, 1, 0.25, { fontSize: 10, color: C.muted, align: "right" }); };
@@ -383,18 +408,18 @@
     // 1. ключевые показатели и из чего сложился оборот — одна таблица и вывод
     T4.forEach((st, k) => {
       const sl = page(`Ключевые показатели — ${R.monthLabel.toLowerCase()}`, st.map((r) => `${r.code}${r.attrs && r.attrs.city ? " " + r.attrs.city : ""}`).join(", ") + ". К прошлому году и к прошлому месяцу; эффективность — рост оборота минус рост трафика", k, T4);
-      mTable(sl, AN.multiRows("main").concat([["Вывод", (r) => ({ note: facConclusion(r) })]]), st, 1.38, H - 1.38 - 0.5, false, true);
+      mTable(sl, AN.multiRows("main").concat([["Вывод", (r) => ({ note: facConclusion(r, wr(st).length > 2) })]]), wr(st), 1.38, H - 1.38 - 0.5, false, true);
       foot(sl);
     });
     // 4. гросс-маржа и её влияние
     if (R.list.some((r) => r.gross)) T4.forEach((st, k) => {
       const sl = page("Гросс-маржа", "Сколько заработали на продажах: месяц, прошлый месяц, с начала года", k, T4);
-      mTable(sl, AN.multiRows("gross"), st, 1.5, null, true);
+      mTable(sl, AN.multiRows("gross"), wr(st), 1.5, null, true);
       foot(sl);
     });
     // 5–6. гросс по группам товаров: топ-10 и антитоп-10
-    if (R.list.some((r) => r.ggroups)) for (const [key, t, sub] of [["top", "Гросс: топ-10 групп товаров", "Где зарабатываем больше всего: гросс в рублях, доля в общем гроссе магазина и маржа"],
-      ["anti", "Гросс: антитоп-10 групп товаров", "Где зарабатываем меньше всего или продаём в минус"]]) {
+    if (R.list.some((r) => r.ggroups)) for (const [key, t, sub] of [["top", "Гросс: топ-10 групп товаров", "Гросс в рублях, доля в гроссе магазина, маржа магазина и региона: зелёная — выше региона, красная — ниже"],
+      ["anti", "Гросс: антитоп-10 групп товаров", "Где зарабатываем меньше всего или продаём в минус; маржа зелёная — выше региона, красная — ниже"]]) {
       T2.forEach((st, k) => {
         const sl = page(t, sub, k, T2);
         const gap = 0.3, cw = (W - 2 * M - gap * (st.length - 1)) / st.length;
@@ -402,10 +427,11 @@
           const x = M + i * (cw + gap);
           txt(sl, [{ text: r.code + "  ", options: { bold: true, color: C.navy } }, { text: r.attrs ? r.attrs.city : "", options: { color: C.muted, fontSize: 12 } }], x, 1.45, cw, 0.35, { fontSize: 16 });
           if (!r.ggroups) { txt(sl, "Нет данных по группам товаров", x, 1.9, cw, 0.3, { fontSize: 12, color: C.muted }); return; }
-          const L = r.ggroups[key].slice(0, 10);
-          const nw = cw - 3.6;
-          table(sl, x, 1.85, [nw, 1.25, 1.1, 1.25], ["Группа товаров", "Гросс", "Доля", "Маржа"], L.map((g) => [short(g.name, Math.round(nw * 12)), { t: rubS(g.gm), c: g.gm < 0 ? C.bad : key === "top" ? C.good : C.ink, b: true },
-            isn(g.share) ? `${fmt(g.share, 1)}%` : "—", { t: isn(g.pct) ? `${fmt(g.pct, 1)}%` : "—", c: isn(g.pct) && g.pct < 0 ? C.bad : C.ink }]), { fontSize: 11, rowH: 0.36 });
+          const L = r.ggroups[key].slice(0, 10), rg = AN.regionOf(r), ra = rg && rg.ggroups ? rg.ggroups.all : null;
+          const nw = cw - (ra ? 4.5 : 3.6);
+          table(sl, x, 1.85, ra ? [nw, 1.15, 0.95, 1.1, 1.3] : [nw, 1.25, 1.1, 1.25], ["Группа товаров", "Гросс", "Доля", "Маржа"].concat(ra ? ["Маржа рег."] : []), L.map((g) => [g.name, { t: rubS(g.gm), c: g.gm < 0 ? C.bad : key === "top" ? C.good : C.ink, b: true },
+            isn(g.share) ? `${fmt(g.share, 1)}%` : "—", { t: isn(g.pct) ? `${fmt(g.pct, 1)}%` : "—", c: isn(g.pct) && g.pct < 0 ? C.bad : isn(g.pct) && ra && isn(ra[g.id]) ? (g.pct >= ra[g.id] ? C.good : C.bad) : C.ink, b: !!ra }]
+            .concat(ra ? [{ t: isn(ra[g.id]) ? `${fmt(ra[g.id], 1)}%` : "—", c: C.muted }] : [])), { fontSize: 10, rowH: 0.42 });
         });
         foot(sl);
       });
@@ -426,7 +452,7 @@
       foot(sl);
     });
     // 8. аксессуары и услуги
-    if (R.list.some((r) => r.acc || r.srv)) T4.forEach((st, k) => { const sl = page("Аксессуары и услуги", "К прошлому году и к прошлому месяцу", k, T4); mTable(sl, AN.multiRows("mix").slice(1), st, 1.5); foot(sl); });
+    if (R.list.some((r) => r.acc || r.srv)) T4.forEach((st, k) => { const sl = page("Аксессуары и услуги", "К прошлому году и к прошлому месяцу", k, T4); mTable(sl, AN.multiRows("mix").slice(1), wr(st), 1.5); foot(sl); });
     // 9. где хорошо и где плохо — полностью, без сокращений
     T2.forEach((st, k) => {
       const sl = page("Где хорошо и где плохо", "По блокам: ● зелёный — хорошо, ● красный — плохо, ● жёлтый — по-разному", k, T2);
