@@ -58,6 +58,13 @@
     };
     return `<section class="panel"><h3>${esc(title)}</h3><p class="muted">На сколько рублей изменился оборот из-за каждого фактора (оборот = трафик × конверсия × средняя цена × штуки в чеке).</p><div class="drv mdrv">${items.map(([l, v]) => row(l, v)).join("")}${row("Итого", dec.dR, true)}</div></section>`;
   }
+  function factorsBlock(res) {
+    if (!res.factors) return "";
+    const MN = KPI.month.MONTHS[res.Mo], R = res.P;
+    const rows = (R && R.cur && R.py ? [`<tr><th class="rl">Оборот</th><td><b>${rubS(R.cur.rev)}</b></td><td>${rubS(R.py.rev)}</td><td>${dl((R.cur.rev / R.py.rev - 1) * 100)}</td><td>${dl(R.prev ? (R.cur.rev / R.prev.rev - 1) * 100 : null)}</td></tr>`] : [])
+      .concat(res.factors.map((f) => `<tr><th class="rl">${esc(f.label)}</th><td><b>${fmt(f.cur, f.d)}${f.u}</b></td><td>${fmt(f.py, f.d)}${f.u}</td><td>${dl(f.dPy, f.t === "pp" ? " п.п." : "%")}</td><td>${dl(f.dPrev, f.t === "pp" ? " п.п." : "%")}</td></tr>`)).join("");
+    return `<section class="panel"><h3>Из чего сложился оборот</h3><p class="muted">Оборот = трафик × конверсия × средний чек; средний чек = средняя цена × штуки в чеке.</p><div class="tw"><table class="mt"><thead><tr><th>Показатель</th><th>${esc(MN)} ${res.Y}</th><th>${esc(MN)} ${res.Y - 1}</th><th>к году</th><th>к прошл. мес.</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  }
   function chart(res) {
     if (!res.series) return "";
     const [a, b] = res.series;
@@ -99,11 +106,12 @@
     let h = `<section class="panel"><h3>Гросс-маржа</h3><div class="tw"><table class="mt"><thead><tr><th>Период</th><th>Оборот</th><th>Гросс-маржа</th><th>Доля в обороте</th></tr></thead><tbody>${P.map(([k, l]) =>
       `<tr><th class="rl">${esc(l)}</th><td>${rub(g[k].rev)}</td><td><b>${rub(g[k].gm)}</b></td><td><b>${fmt(g[k].pct, 1)}%</b></td></tr>`).join("")}</tbody></table></div>`;
     if (g.month && g.prev) h += `<p>К прошлому месяцу: гросс ${dl(g.dPrevGm)}, маржинальность ${dl(g.dPrevPct, " п.п.")}.${isn(g.benchPct) && res.bench ? ` Среднее по ${esc(res.bench.name)}: ${fmt(g.benchPct, 1)}%.` : ""}</p>`;
+    if (isn(g.effRev)) h += `<p>Почему изменился гросс: <b>${rubS(g.dGm, true)}</b> — из-за оборота <b class="${g.effRev >= 0 ? "pos" : "neg"}">${rubS(g.effRev, true)}</b>, из-за маржинальности <b class="${g.effPct >= 0 ? "pos" : "neg"}">${rubS(g.effPct, true)}</b>.</p>`;
     h += "</section>";
     if (res.ggroups) {
-      const t = (arr, title) => arr.length ? `<section class="panel"><h3>${title}</h3><div class="tw"><table class="mt"><thead><tr><th>Группа товаров</th><th>Оборот</th><th>Гросс</th><th>Маржа</th></tr></thead><tbody>${arr.map((x) =>
-        `<tr><th class="rl">${esc(x.name)}</th><td>${rub(x.rev)}</td><td class="${x.gm < 0 ? "c-bad" : ""}">${rub(x.gm)}</td><td>${isn(x.pct) ? fmt(x.pct, 1) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div></section>` : "";
-      h += `<div class="two">${t(res.ggroups.top, "Больше всего гросса (месяц)")}${t(res.ggroups.neg, "Отрицательная маржа (месяц)") || '<section class="panel"><h3>Отрицательная маржа</h3><p class="muted">Групп с отрицательной маржой нет.</p></section>'}</div>`;
+      const t = (arr, title) => arr.length ? `<section class="panel"><h3>${title}</h3><div class="tw"><table class="mt"><thead><tr><th>Группа товаров</th><th>Оборот</th><th>Гросс</th><th>Доля гросса</th><th>Маржа</th></tr></thead><tbody>${arr.map((x) =>
+        `<tr><th class="rl">${esc(x.name)}</th><td>${rub(x.rev)}</td><td class="${x.gm < 0 ? "c-bad" : ""}">${rub(x.gm)}</td><td>${isn(x.share) ? fmt(x.share, 1) + "%" : "—"}</td><td>${isn(x.pct) ? fmt(x.pct, 1) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div></section>` : "";
+      h += `<div class="two">${t(res.ggroups.top, "Топ-10 групп по гроссу (месяц)")}${t(res.ggroups.anti, "Антитоп-10 групп по гроссу (месяц)")}</div>`;
     }
     return h;
   }
@@ -179,8 +187,8 @@
     if (res.stores && res.stores.length) tabs.push(["st", "Магазины"]);
     tabs.push(["plan", "План действий"]);
     const notes = res.notes.map((n) => `<div class="banner">ℹ ${esc(n)}</div>`).join("");
-    const sec = { sum: notes + tiles(res) + `<div class="two">${decompBlock(res.decPy, "За счёт чего изменился оборот к прошлому году")}${chart(res)}</div>` + lists(res),
-      kpi: kpiTable(res) + decompBlock(res.decPrev, "За счёт чего изменился оборот к прошлому месяцу"), gross: grossBlock(res), cat: catsBlock(res), acc: accBlock(res), srv: srvBlock(res), st: storesBlock(res), plan: actionsBlock(res) };
+    const sec = { sum: notes + tiles(res) + `<div class="two">${factorsBlock(res)}${chart(res)}</div>` + lists(res),
+      kpi: kpiTable(res), gross: grossBlock(res), cat: catsBlock(res), acc: accBlock(res), srv: srvBlock(res), st: storesBlock(res), plan: actionsBlock(res) };
     const now = new Date();
     const body = `<div class="rep"><header class="top"><div class="ttl"><h1>Итоги: ${esc(res.monthLabel.toLowerCase())} · ${esc(res.name)}</h1><p>${esc(res.sub)}</p><p class="muted">Отчёт ${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}</p></div></header>
 <nav class="tabs">${tabs.map(([t, n], i) => `<button class="tb${i ? "" : " on"}" data-t="${t}">${n}</button>`).join("")}</nav><main>
@@ -213,7 +221,7 @@ td.tl{text-align:left}
     const body = rows.map(([label, f]) => {
       const cells = L.map((r) => { const c = f(r); if (!c) return '<td class="mc">—</td>';
         const v = c.sign != null ? `<b class="${c.sign >= 0 ? "pos" : "neg"}">${esc(c.v)}</b>` : `<b>${esc(c.v)}</b>`;
-        return `<td class="mc">${v}${c.d.map(([l, x, u]) => `<span>${dl(x, u)} <i>${esc(l)}</i></span>`).join("")}</td>`; });
+        return `<td class="mc">${v}${c.sub ? `<span class="muted">${esc(c.sub)}</span>` : ""}${c.d.map(([l, x, u]) => `<span>${dl(x, u)} <i>${esc(l)}</i></span>`).join("")}</td>`; });
       return cells.every((c) => c === '<td class="mc">—</td>') ? "" : `<tr><th class="rl">${esc(label)}</th>${cells.join("")}</tr>`;
     }).join("");
     return `<section class="panel"><h3>${esc(title)}</h3>${note ? `<p class="muted">${esc(note)}</p>` : ""}<div class="tw"><table class="mt mtm sticky1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
@@ -224,12 +232,14 @@ td.tl{text-align:left}
   function buildMulti(R, baseCss) {
     const li = (arr, cls, n) => arr.length ? `<ul class="mli ${cls}">${arr.slice(0, n).map((x) => `<li><b>${esc(x.area)}.</b> ${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">—</p>';
     const catList = (arr, cls) => arr.length ? `<ol class="mli ${cls}">${arr.slice(0, 7).map((x) => `<li>${esc(x.name)} <b class="${x.d >= 0 ? "pos" : "neg"}">${rubS(x.d, true)}</b> <span class="muted">(${isn(x.dQty) ? `шт ${fmt(x.dQty, 0, true)}%` : ""}${isn(x.dPrice) ? `, цена ${fmt(x.dPrice, 0, true)}%` : ""})</span></li>`).join("")}</ol>` : '<p class="muted">—</p>';
-    const tabs = [["kpi", "Показатели"], ["mix", "Гросс, АКС, услуги"], ["dec", "За счёт чего"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
+    const tabs = [["kpi", "Показатели"], ["fac", "Из чего оборот"], ["gross", "Гросс"], ["mix", "Аксессуары и услуги"], ["cat", "Категории"], ["fin", "Выводы"], ["plan", "План действий"]];
+    const gTab = (r, key, title) => (r.ggroups ? `<h4>${title}</h4><ol class="mli">${r.ggroups[key].slice(0, 10).map((x) => `<li>${esc(x.name)} <b class="${x.gm >= 0 ? "pos" : "neg"}">${rubS(x.gm)}</b> <span class="muted">(${isn(x.share) ? fmt(x.share, 1) + "% гросса, " : ""}маржа ${fmt(x.pct, 1)}%)</span></li>`).join("")}</ol>` : "");
     const notes = [...new Set(R.list.flatMap((r) => r.notes))].map((n) => `<div class="banner">ℹ ${esc(n)}</div>`).join("");
     const sec = {
       kpi: notes + multiTable(R, "kpi", `Ключевые показатели: ${R.monthLabel.toLowerCase()}`, "Результаты каждого магазина отдельно. Эффективность — рост оборота минус рост трафика к прошлому году; ниже изменения в п.п."),
-      mix: multiTable(R, "mix", "Гросс-маржа, аксессуары и услуги", "Аксессуары и услуги — к тому же месяцу прошлого года."),
-      dec: multiTable(R, "dec", "За счёт чего изменился оборот к прошлому году", "На сколько рублей изменили оборот трафик, конверсия, средняя цена и штуки в чеке."),
+      fac: multiTable(R, "fac", "Из чего сложился оборот", "Этот год против прошлого: трафик, конверсия, чеки, средний чек, средняя цена, штуки в чеке."),
+      gross: multiTable(R, "gross", "Гросс-маржа и её влияние", "«Почему изменился гросс» — сколько рублей гросса дал рост или падение оборота и сколько — изменение маржинальности.") + multiCards(R, (r) => gTab(r, "top", "Топ-10 групп по гроссу") + gTab(r, "anti", "Антитоп-10 групп по гроссу") || '<p class="muted">Нет данных по группам товаров.</p>'),
+      mix: multiTable(R, "mix", "Аксессуары и услуги", "К тому же месяцу прошлого года."),
       cat: multiCards(R, (r) => (r.cats ? `<h4>Рост к прошлому месяцу</h4>${catList(r.cats.top, "good")}<h4>Падение</h4>${catList(r.cats.anti, "bad")}` : '<p class="muted">Нет данных по подкатегориям.</p>')),
       fin: multiCards(R, (r) => `<h4>Где плохо</h4>${li(r.bad, "bad", 6)}<h4>Где хорошо</h4>${li(r.good, "good", 4)}`),
       plan: multiCards(R, (r) => r.actions.slice(0, 5).map((a, i) => `<div class="act ${a.prio === "Высокий" ? "bad" : a.prio === "Средний" ? "warn" : ""}"><div class="act-h"><b>${i + 1}. ${esc(a.area)}</b></div><p class="what">${esc(a.what)}</p></div>`).join("")),
