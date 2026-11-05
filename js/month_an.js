@@ -100,23 +100,25 @@
     const codes = MM.codesFor(M, sel);
     const Y = M.Y, Mo = M.Mo, pm = (Mo + 11) % 12, pY = Mo === 0 ? Y - 1 : Y;
     const mName = MM.MONTHS[Mo], prevName = MM.MONTHS[pm];
+    // регион для сравнения — только сопоставимые магазины (LfL): полный месяц в этом году, в прошлом году и в прошлом месяце
+    const lflOnly = (cs) => (M.hist ? cs.filter((c) => fullMonth(M, c, Y, Mo) && fullMonth(M, c, Y - 1, Mo) && fullMonth(M, c, pY, pm)) : cs);
+    const benchOf = (level, name) => { const all = MM.codesFor(M, { level, name }), l = lflOnly(all); return { level, name, codes: l.length ? l : all, lfl: l.length > 0, total: all.length }; };
     const res = { type: "month", level: sel.level, sel, code: sel.level === "store" ? sel.code : sel.name, M, Y, Mo, norms, codes,
       monthLabel: `${mName[0].toUpperCase() + mName.slice(1)} ${Y}`, prevLabel: prevName, pyLabel: `${mName} ${Y - 1}`, notes: [] };
     if (sel.level === "store") {
       const a = MM.attrs(M, sel.code); res.attrs = a;
       res.name = `Магазин ${sel.code}`; res.sub = [a.city, a.asm ? `ASM ${a.asm}` : "", a.dsm].filter(Boolean).join(" · ");
-      res.bench = a.asm ? { level: "asm", name: a.asm, codes: MM.codesFor(M, { level: "asm", name: a.asm }) } : null;
+      res.bench = a.asm ? benchOf("asm", a.asm) : null;
     } else if (sel.level === "group") {
       res.code = codes.length <= 4 ? codes.join("_") : `${codes.slice(0, 3).join("_")}_i_dr`;
       res.name = codes.length <= 4 ? `Магазины ${codes.join(", ")}` : `Магазины ${codes.slice(0, 3).join(", ")} и ещё ${codes.length - 3}`;
       const asms = [...new Set(codes.map((c) => MM.attrs(M, c).asm).filter(Boolean))], dsms = [...new Set(codes.map((c) => MM.attrs(M, c).dsm).filter(Boolean))];
       res.sub = `выбрано магазинов: ${codes.length}${asms.length ? " · " + asms.join(", ") : ""}`;
-      res.bench = asms.length === 1 ? { level: "asm", name: asms[0], codes: MM.codesFor(M, { level: "asm", name: asms[0] }) }
-        : dsms.length === 1 ? { level: "dsm", name: dsms[0], codes: MM.codesFor(M, { level: "dsm", name: dsms[0] }) } : null;
+      res.bench = asms.length === 1 ? benchOf("asm", asms[0]) : dsms.length === 1 ? benchOf("dsm", dsms[0]) : null;
     } else {
       res.name = sel.name; res.sub = sel.level === "asm" ? `ASM · магазинов ${codes.length}` : sel.level === "dsm" ? `Дивизион · магазинов ${codes.length}` : `магазинов ${codes.length}`;
       const d = codes.length ? MM.attrs(M, codes[0]).dsm : "";
-      res.bench = sel.level === "asm" && d ? { level: "dsm", name: d, codes: MM.codesFor(M, { level: "dsm", name: d }) } : null;
+      res.bench = sel.level === "asm" && d ? benchOf("dsm", d) : null;
     }
     const ytdM = []; for (let m = 0; m <= Mo; m++) ytdM.push(m);
     // ---- KPI из справки
@@ -172,7 +174,7 @@
       const base = res.gross && res.gross.month && res.gross.month.gm > 0 ? res.gross.month.gm : tot > 0 ? tot : null;
       L.forEach((o) => (o.share = base ? (o.gm / base) * 100 : null));
       if (L.length) res.ggroups = { top: [...L].sort((a, b) => b.gm - a.gm).slice(0, 10), anti: [...L].sort((a, b) => a.gm - b.gm).slice(0, 10),
-        neg: L.filter((o) => o.gm < 0).sort((a, b) => a.gm - b.gm).slice(0, 10), total: tot, negSum: L.filter((o) => o.gm < 0).reduce((a, o) => a + o.gm, 0) };
+        neg: L.filter((o) => o.gm < 0).sort((a, b) => a.gm - b.gm).slice(0, 10), all: Object.fromEntries(L.map((o) => [o.id, o.pct])), total: tot, negSum: L.filter((o) => o.gm < 0).reduce((a, o) => a + o.gm, 0) };
     }
     // ---- подкатегории: топ-15 роста и падения к прошлому месяцу
     if (M.cat) {
@@ -442,12 +444,15 @@
       for (const [k, n] of [["traffic", "трафик"], ["conv", "конверсия"], ["price", "средняя цена"], ["upt", "штуки в чеке"]]) {
         const f = F[k]; if (!f || !isn(f.dPy)) continue; (f.dPy >= 0 ? up : dn).push(`${n} ${f.t === "pp" ? ppS(f.dPy) : pctS(f.dPy)}`);
       }
-      out.push({ area: "Оборот", tone: tone([r.dPy, r.dPrev]), text: `${rubS(cur.rev)}: ${join([isn(r.dPy) && `${pctS(r.dPy)} к прошлому году`, isn(r.dPrev) && `${pctS(r.dPrev)} ${toM}`, isn(r.dYtd) && `с начала года ${pctS(r.dYtd)}`])}.` +
-        (up.length ? ` Помогли: ${up.join(", ")}.` : "") + (dn.length ? ` Тянули вниз: ${dn.join(", ")}.` : "") });
+      const bc = res.benchCur, bp = res.benchPy, rg = res.bench ? res.bench.name : "";
+      const rgRev = bc && bp && isn(bc.rev) && isn(bp.rev) ? ` Регион ${rg}: ${pctS(pct(bc.rev, bp.rev))} к году.` : "";
+      out.push({ area: "Оборот", tone: tone([r.dPy, r.dPrev]), rg: rgRev, text: `${rubS(cur.rev)}: ${join([isn(r.dPy) && `${pctS(r.dPy)} к прошлому году`, isn(r.dPrev) && `${pctS(r.dPrev)} ${toM}`, isn(r.dYtd) && `с начала года ${pctS(r.dYtd)}`])}.` +
+        (up.length ? ` Помогли: ${up.join(", ")}.` : "") + (dn.length ? ` Тянули вниз: ${dn.join(", ")}.` : "") + rgRev });
       const cv = row("conv"), ef = row("eff");
       if (isn(cur.conv)) out.push({ area: "Конверсия и эффективность", tone: tone([cv.dPy, ef.dPy]),
         text: `Конверсия ${fmt(cur.conv, 1)}% (${join([isn(cv.dPy) && `${ppS(cv.dPy)} к году`, isn(cv.dPrev) && `${ppS(cv.dPrev)} ${toM}`])})` +
-          (isn(ef.dPy) ? `; эффективность ${fmt(ef.dPy, 1, true)}% к году — ${ef.dPy < 0 ? "оборот падает быстрее трафика, теряем на каждом посетителе" : "оборот растёт быстрее трафика"}` : "") + "." });
+          (isn(ef.dPy) ? `; эффективность ${fmt(ef.dPy, 1, true)}% к году — ${ef.dPy < 0 ? "оборот падает быстрее трафика, теряем на каждом посетителе" : "оборот растёт быстрее трафика"}` : "") + "." +
+          (bc && isn(bc.conv) ? ` В регионе конверсия ${fmt(bc.conv, 1)}% — у магазина ${cur.conv >= bc.conv ? "выше" : "ниже"} на ${fmt(Math.abs(cur.conv - bc.conv), 1)} п.п.` : "") });
     }
     const g = res.gross;
     if (g && g.month) {
@@ -457,6 +462,7 @@
         if (top.length) t += ` Больше всего дают: ${top.map((x) => `${x.name} ${rubS(x.gm)}`).join(", ")}.`;
         if (res.ggroups.neg.length) t += ` В минус: ${res.ggroups.neg.slice(0, 3).map((x) => `${x.name} ${rubS(x.gm)}`).join(", ")}.`;
       }
+      if (isn(g.benchPct)) t += ` В регионе маржинальность ${fmt(g.benchPct, 1)}% — у магазина ${g.month.pct >= g.benchPct ? "выше" : "ниже"} на ${fmt(Math.abs(g.month.pct - g.benchPct), 1)} п.п.`;
       out.push({ area: "Гросс-маржа", tone: tone([g.dPrevGm, isn(g.dPrevPct) && Math.abs(g.dPrevPct) >= 0.3 ? g.dPrevPct : null]), text: t });
     }
     const ecoTxt = (eco, key, lbl) => {
@@ -467,13 +473,16 @@
       const t = res.acc.t;
       out.push({ area: "Аксессуары", tone: tone([t.yoy, t.dSh, t.dAtt]),
         text: `${rubS(t.acc)} (${join([isn(t.yoy) && `${pctS(t.yoy)} к году`, isn(t.dPrev) && `${pctS(t.dPrev)} ${toM}`]) || "—"}), доля ${fmt(t.sh, 1)}%${isn(t.dSh) ? ` (${ppS(t.dSh)} к году)` : ""}` +
-          (isn(t.att) ? `, аттач ${fmt(t.att, 1)}%${isn(t.dAtt) ? ` (${ppS(t.dAtt)})` : ""}` : "") + "." + ecoTxt(res.acc.eco, "d", "к году") });
+          (isn(t.att) ? `, аттач ${fmt(t.att, 1)}%${isn(t.dAtt) ? ` (${ppS(t.dAtt)})` : ""}` : "") + "." +
+          (res.accBench && isn(res.accBench.t.sh) ? ` В регионе доля ${fmt(res.accBench.t.sh, 1)}%${isn(res.accBench.t.att) ? `, аттач ${fmt(res.accBench.t.att, 1)}%` : ""}.` : "") + ecoTxt(res.acc.eco, "d", "к году") });
     }
     if (res.srv || res.types) {
       const t = res.srv ? res.srv.t : null, ty = res.types, ch = ty && isn(ty.chdu) ? ty.chdu : null, nm = res.norms.chdu_min;
       let s = t ? `${rubS(t.srv)} (${join([isn(t.yoy) && `${pctS(t.yoy)} к году`, isn(t.dPrev) && `${pctS(t.dPrev)} ${toM}`]) || "—"}), доля ${fmt(t.sh, 1)}%${isn(t.dSh) ? ` (${ppS(t.dSh)} к году)` : ""}` : "";
       if (isn(ch)) { const c1 = Math.round(ch * 10) / 10; s += `${s ? ", " : ""}ЧДУ ${fmt(ch, 1)}% — ${c1 > nm ? "выше нормы" : c1 === nm ? "на уровне нормы" : "ниже нормы"} ${fmt(nm, 0)}%`; }
       s += ".";
+      const sb = res.srvBench && res.srvBench.t, tb = res.typesBench;
+      if ((sb && isn(sb.sh)) || (tb && isn(tb.chdu))) s += ` В регионе ${join([sb && isn(sb.sh) && `доля ${fmt(sb.sh, 1)}%`, tb && isn(tb.chdu) && `ЧДУ ${fmt(tb.chdu, 1)}%`])}.`;
       if (res.srv) s += ecoTxt(res.srv.eco, "d", "к году");
       if (ty) { const L = ty.types.filter((x) => isn(x.dPrevRub) && x.dPrevRub !== 0).sort((a, b) => a.dPrevRub - b.dPrevRub);
         const dn = L.filter((x) => x.dPrevRub < 0).slice(0, 2), up = L.filter((x) => x.dPrevRub > 0).reverse().slice(0, 2);
@@ -490,6 +499,17 @@
     return out;
   }
 
+  // итоги региона (ASM) магазина — для колонки «Регион»; считаются один раз на загрузку
+  function regionOf(r) {
+    if (!r || !r.M || !r.bench || r.bench.level !== "asm") return null;
+    const C = r.M._regCache || (r.M._regCache = {});
+    if (!C[r.bench.name]) {
+      const x = analyze(r.M, { level: "group", codes: r.bench.codes }, r.norms);
+      x.isRegion = true; x.code = `Регион ${r.bench.name}`; x.attrs = { city: r.bench.lfl ? `LfL: ${r.bench.codes.length} из ${r.bench.total} магазинов` : `магазинов: ${r.bench.codes.length}` };
+      C[r.bench.name] = x;
+    }
+    return C[r.bench.name];
+  }
   // несколько магазинов: каждый считается отдельно, без суммирования
   function analyzeMulti(M, codes, norms) {
     const list = codes.map((c) => analyze(M, { level: "store", code: c }, norms));
@@ -544,5 +564,5 @@
     return [];
   }
 
-  KPI.monthAn = { analyze, analyzeMulti, multiRows, histPeriod, rubS, pctS, ppS, KPI_ROWS };
+  KPI.monthAn = { analyze, analyzeMulti, multiRows, regionOf, histPeriod, rubS, pctS, ppS, KPI_ROWS };
 })(typeof globalThis !== "undefined" ? globalThis : this);
