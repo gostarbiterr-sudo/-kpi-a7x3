@@ -174,7 +174,7 @@
       const base = res.gross && res.gross.month && res.gross.month.gm > 0 ? res.gross.month.gm : tot > 0 ? tot : null;
       L.forEach((o) => (o.share = base ? (o.gm / base) * 100 : null));
       if (L.length) res.ggroups = { top: [...L].sort((a, b) => b.gm - a.gm).slice(0, 10), anti: [...L].sort((a, b) => a.gm - b.gm).slice(0, 10),
-        neg: L.filter((o) => o.gm < 0).sort((a, b) => a.gm - b.gm).slice(0, 10), all: Object.fromEntries(L.map((o) => [o.id, o.pct])), total: tot, negSum: L.filter((o) => o.gm < 0).reduce((a, o) => a + o.gm, 0) };
+        neg: L.filter((o) => o.gm < 0).sort((a, b) => a.gm - b.gm).slice(0, 10), all: Object.fromEntries(L.map((o) => [o.id, o.pct])), list: L, total: tot, negSum: L.filter((o) => o.gm < 0).reduce((a, o) => a + o.gm, 0) };
     }
     // ---- подкатегории: топ-15 роста и падения к прошлому месяцу
     if (M.cat) {
@@ -190,7 +190,7 @@
           qty: o.qty[2], qtyPrev: o.qty[1], dQty: pct(o.qty[2], o.qty[1]), price: pr(2), dPrice: pct(pr(2), pr(1)), chk: ch(2), dChk: pct(ch(2), ch(1)), share: tot ? (o.rev[2] / tot) * 100 : null };
       });
       res.cats = { top: L.filter((o) => o.d > 0).sort((a, b) => b.d - a.d).slice(0, 15), anti: L.filter((o) => o.d < 0).sort((a, b) => a.d - b.d).slice(0, 15), total: tot,
-        totalPrev: Object.values(A).reduce((a, o) => a + o.rev[1], 0), n: L.length };
+        totalPrev: Object.values(A).reduce((a, o) => a + o.rev[1], 0), n: L.length, list: L };
     }
     // ---- аксессуары (отчётный месяц, к прошлому году)
     const accAgg = (cs, m = Mo) => {
@@ -510,6 +510,20 @@
     }
     return C[r.bench.name];
   }
+  // рейтинг магазинов региона (LfL + свои): гросс-маржа и доля услуг за отчётный месяц
+  function rating(r, own) {
+    if (!r || !r.M || !r.bench) return null;
+    const M = r.M, codes = [...new Set(r.bench.codes.concat(own || []))];
+    const gm = [], srv = [], acc = [];
+    for (const c of codes) {
+      const g = M.g && M.g.month && M.g.month.stores[c]; if (g && g.rev > 0) gm.push([c, (g.gm / g.rev) * 100]);
+      const h = histPeriod(M, [c], r.Y, [r.Mo]);
+      if (h && isn(h.srvSh)) srv.push([c, h.srvSh]);
+      if (h && isn(h.accSh)) acc.push([c, h.accSh]);
+    }
+    const so = (a) => a.sort((x, y) => y[1] - x[1]);
+    return { gm: so(gm), srv: so(srv), acc: so(acc), region: r.bench.name, lfl: r.bench.lfl };
+  }
   // несколько магазинов: каждый считается отдельно, без суммирования
   function analyzeMulti(M, codes, norms) {
     const list = codes.map((c) => analyze(M, { level: "store", code: c }, norms));
@@ -564,5 +578,5 @@
     return [];
   }
 
-  KPI.monthAn = { analyze, analyzeMulti, multiRows, regionOf, histPeriod, rubS, pctS, ppS, KPI_ROWS };
+  KPI.monthAn = { analyze, analyzeMulti, multiRows, regionOf, rating, histPeriod, rubS, pctS, ppS, KPI_ROWS };
 })(typeof globalThis !== "undefined" ? globalThis : this);

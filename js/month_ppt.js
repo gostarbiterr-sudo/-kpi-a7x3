@@ -154,9 +154,11 @@
     }
     footer(sl, res, ++n); return n;
   }
-  function sGross(pres, res, n) {
+  function sGross(pres, res, n, onlyGroups) {
     const g = res.gross; if (!g) return n;
-    const sl = pres.addSlide(); sl.background = { color: C.white };
+    const sl = onlyGroups ? null : pres.addSlide(); if (sl) sl.background = { color: C.white };
+    const RGg = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
+    if (sl) {
     title(sl, "Гросс-маржа", "Сколько заработали на продажах: в рублях и доля в обороте");
     const P = [["month", res.monthLabel], ["prev", "Прошлый месяц"], ["ytd", "С начала года"]].filter(([k]) => g[k]);
     P.forEach(([k, l], i) => {
@@ -169,7 +171,6 @@
     const lines = [];
     if (g.prev && g.month) lines.push([{ text: "К прошлому месяцу: ", options: { bold: true } }, { text: `маржинальность ${arrow(g.dPrevPct, " п.п.")}`, options: { bold: true, color: colorOf(g.dPrevPct) } }, { text: ", гросс в рублях " }, { text: arrow(g.dPrevGm, "%"), options: { bold: true, color: colorOf(g.dPrevGm) } },
       { text: "", options: { breakLine: true } }]);
-    const RGg = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
     if (RGg && RGg.gross && RGg.gross.month) { const q = RGg.gross;
       lines.push([{ text: `${RGg.code}: `, options: { bold: true } }, { text: `${fmt(q.month.pct, 1)}% за месяц` + (q.ytd ? `, ${fmt(q.ytd.pct, 1)}% с начала года` : "") + (isn(q.dPrevGm) ? `, гросс к прошлому месяцу ${fmt(q.dPrevGm, 1, true)}%` : "") + " · у магазина ", options: { color: C.ink } },
         { text: `${g.month.pct >= q.month.pct ? "выше" : "ниже"} на ${fmt(Math.abs(g.month.pct - q.month.pct), 1)} п.п.`, options: { bold: true, color: g.month.pct >= q.month.pct ? C.good : C.bad, breakLine: true } }]); }
@@ -181,6 +182,7 @@
     }
     if (lines.length) txt(sl, lines.flat(), M, 3.65, W - 2 * M, 2.8, { fontSize: 15, paraSpaceAfter: 10 });
     footer(sl, res, ++n);
+    }
     if (res.ggroups) {
       const s2 = pres.addSlide(); s2.background = { color: C.white };
       const ra = RGg && RGg.ggroups ? RGg.ggroups.all : null;
@@ -313,6 +315,165 @@
     });
   }
 
+  // ---------------------------------------------------------------- наглядные таблицы с раскраской (магазины против региона)
+  // mk(title, sub) создаёт слайд с заголовком, fin(sl) ставит подвал
+  const HEAT = (v, soft) => (!isn(v) ? C.white : v >= soft ? "BFE5C6" : v >= 0 ? "E3F4E6" : v > -soft ? "FFF1CC" : v > -5 * soft ? "FAD4CF" : "F4AFA6");
+  const HTX = (v) => (!isn(v) ? C.muted : v >= 0 ? "14532D" : "7F1D1D");
+  const sgn = (v, d = 1) => (!isn(v) ? "—" : Math.abs(v) < Math.pow(10, -d) / 2 ? fmt(0, d) : fmt(v, d, true));
+  const REG_FILL = "FFF7ED", REG_TX = "B91C1C", HEAD2 = "2E4A7D";
+  function gcell(sl, x, y, w, h, t, o = {}) {
+    sl.addText(t, { x, y, w, h, fontFace: FONT, fontSize: o.fs || 11, bold: !!o.b, color: o.c || C.ink, align: o.al || "center", valign: "middle", margin: [0, o.m != null ? o.m : 4, 0, o.m != null ? o.m : 4],
+      fill: { color: o.fill || C.white }, line: { color: C.line, width: 0.5 } });
+  }
+  const rowName = (r) => [{ text: r.isRegion ? r.code : r.code, options: { bold: true, fontSize: 11.5, color: r.isRegion ? REG_TX : C.ink, breakLine: true } },
+    { text: r.attrs ? r.attrs.city || "" : "", options: { fontSize: 9, color: C.muted } }];
+  const krow = (r, k) => (r.kpi || []).find((x) => x.k === k) || {};
+  const kfac = (r, k) => (r.factors || []).find((x) => x.k === k) || {};
+
+  // 1. Основные KPI: регион и магазины строками, показатели столбцами
+  function vKpi(pres, mk, fin, stores, regs, monthLabel) {
+    const rows = regs.concat(stores);
+    const sl = mk(`Основные KPI — ${monthLabel.toLowerCase()}`, "Регион — только сопоставимые магазины (LfL). Зелёный — рост, жёлтый — небольшое падение, красный — сильное падение");
+    const G1 = [
+      ["Оборот, млн ₽", (r) => { const x = krow(r, "rev"); return [isn(x.cur) ? fmt(x.cur / 1e6, 1) : "—", x.dPrev, x.dPy]; }, ["факт", "мес., %", "год, %"], 3],
+      ["Трафик", (r) => { const f = kfac(r, "traffic"); return [isn(f.cur) ? fmt(f.cur, 0) : "—", f.dPrev, f.dPy]; }, ["факт", "мес., %", "год, %"], 3],
+      ["Конверсия", (r) => { const f = kfac(r, "conv"); return [isn(f.cur) ? `${fmt(f.cur, 1)}%` : "—", f.dPrev, f.dPy]; }, ["факт", "мес., п.п.", "год, п.п."], 1],
+      ["Эффективность", (r) => { const x = krow(r, "eff"); return [isn(x.dPy) ? `${fmt(x.dPy, 1, true)}%` : "—", x.dPrev, x.dYtd]; }, ["к году", "мес., п.п.", "нач. года"], 3],
+      ["Средний чек, ₽", (r) => { const f = kfac(r, "avg"); return [isn(f.cur) ? fmt(f.cur, 0) : "—", f.dPrev, f.dPy]; }, ["факт", "мес., %", "год, %"], 3],
+      ["Средняя цена, ₽", (r) => { const f = kfac(r, "price"); return [isn(f.cur) ? fmt(f.cur, 0) : "—", f.dPrev, f.dPy]; }, ["факт", "мес., %", "год, %"], 3],
+      ["Штук в чеке", (r) => { const f = kfac(r, "upt"); return [isn(f.cur) ? fmt(f.cur, 2) : "—", f.dPrev, f.dPy]; }, ["факт", "мес., %", "год, %"], 3]];
+    const regOf = (r) => (r.isRegion ? null : KPI.monthAn.regionOf(r));
+    const vs = (a, b) => (isn(a) && isn(b) ? a - b : null);
+    const G2 = [
+      ["Доля аксессуаров", (r) => { const t = r.acc && r.acc.t, q = regOf(r), u = q && q.acc && q.acc.t; return t ? [`${fmt(t.sh, 1)}%`, t.dPrevSh, u ? vs(t.sh, u.sh) : null] : null; }],
+      ["Аттач аксессуаров", (r) => { const t = r.acc && r.acc.t, q = regOf(r), u = q && q.acc && q.acc.t; return t && isn(t.att) ? [`${fmt(t.att, 1)}%`, t.dPrevAtt, u ? vs(t.att, u.att) : null] : null; }],
+      ["Доля услуг", (r) => { const t = r.srv && r.srv.t, q = regOf(r), u = q && q.srv && q.srv.t; return t ? [`${fmt(t.sh, 1)}%`, t.dPrevSh, u ? vs(t.sh, u.sh) : null] : null; }],
+      ["ЧДУ", (r) => { const t = r.types, q = regOf(r), u = q && q.types; return t && isn(t.chdu) ? [`${fmt(t.chdu, 1)}%`, t.dPrevChdu, u ? vs(t.chdu, u.chdu) : null] : null; }],
+      ["Гросс-маржа", (r) => { const g = r.gross, q = regOf(r), u = q && q.gross; return g && g.month ? [`${fmt(g.month.pct, 1)}%`, g.dPrevPct, u && u.month ? vs(g.month.pct, u.month.pct) : null] : null; }]];
+    const nameW = 1.95, n = rows.length;
+    const rh = Math.min(0.56, (3.2 * 0.57) / n), rh2 = Math.min(0.42, (3.2 * 0.43) / n);
+    const grid = (y, groups, sub, h, fsF) => {
+      const gw = (W - 2 * M - nameW) / groups.length, sw = [gw * 0.4, gw * 0.3, gw * 0.3];
+      gcell(sl, M, y, nameW, 0.68, "Магазин", { fill: C.navy, c: C.white, b: true });
+      groups.forEach((g, i) => { const gx = M + nameW + i * gw;
+        gcell(sl, gx, y, gw, 0.36, g[0], { fill: C.navy, c: C.white, b: true, fs: 11, m: 1 });
+        (g[2] || sub).forEach((t, j) => gcell(sl, gx + sw.slice(0, j).reduce((a, b) => a + b, 0), y + 0.36, sw[j], 0.32, t, { fill: HEAD2, c: "DCE6F5", fs: 8.5, m: 1 })); });
+      y += 0.68;
+      rows.forEach((r, ri) => {
+        if (ri === regs.length && ri > 0) y += 0.08;
+        const z = r.isRegion ? REG_FILL : C.white;
+        sl.addText(rowName(r), { x: M, y, w: nameW, h, fontFace: FONT, margin: [0, 5, 0, 5], valign: "middle", fill: { color: z }, line: { color: C.line, width: 0.5 }, fit: "shrink" });
+        groups.forEach((g, i) => { const gx = M + nameW + i * gw, v = g[1](r);
+          if (!v) { gcell(sl, gx, y, gw, h, "—", { fill: z, c: C.muted }); return; }
+          gcell(sl, gx, y, sw[0], h, v[0], { b: true, fs: fsF, fill: z, m: 1 });
+          [1, 2].forEach((j) => { const reg = r.isRegion && sub && j === 2;
+            gcell(sl, gx + sw[0] + (j - 1) * sw[1], y, sw[1], h, reg ? "—" : sgn(v[j]), { fill: reg ? "F9FAFB" : HEAT(v[j], g[3] || 0.5), c: reg ? C.muted : HTX(v[j]), b: !reg, fs: fsF - 1, m: 1 }); }); });
+        y += h;
+      });
+      return y;
+    };
+    let y = grid(1.45, G1, null, rh, 11);
+    y += 0.3;
+    txt(sl, "Аксессуары, услуги и гросс", M, y, 6, 0.3, { fontSize: 14, bold: true, color: C.navy }); y += 0.36;
+    y = grid(y, G2, ["факт", "мес., п.п.", "к региону, п.п."], rh2, 11);
+    // короткий вывод по каждому магазину, если есть место
+    const st2 = stores.slice(0, 4), room = H - 0.55 - (y + 0.2);
+    if (room > 0.6) {
+      const cw2 = (W - 2 * M - 0.3 * (st2.length - 1)) / st2.length;
+      st2.forEach((r, i) => txt(sl, [{ text: `${r.code}: `, options: { bold: true, color: C.navy } }, { text: facConclusion(r, true), options: { color: C.ink } }],
+        M + i * (cw2 + 0.3), y + 0.2, cw2, room, { fontSize: st2.length > 2 ? 9 : 10.5, fit: "shrink" }));
+    }
+    fin(sl);
+  }
+
+  // 2. Категории магазина против региона (к прошлому месяцу), полоски динамики
+  function vCats(pres, mk, fin, r, reg, monthLabel, prevGen) {
+    if (!r.cats || !r.cats.list) return false;
+    const RM = {}; ((reg && reg.cats && reg.cats.list) || []).forEach((o) => (RM[o.id] = o));
+    const L = [...r.cats.list].sort((a, b) => b.rev + b.revPrev - (a.rev + a.revPrev)).slice(0, 12);
+    const sl = mk(`Категории ${r.code} против региона`, `${monthLabel} к ${prevGen}: динамика оборота магазина и региона (LfL). Последняя колонка — насколько магазин лучше или хуже региона, п.п.`);
+    const cw = [2.75, 1.25, 1.25, 2.3, 2.3, 2.38], hd = ["Категория", "Прошлый мес., млн ₽", `${monthLabel.split(" ")[0]}, млн ₽`, "Динамика магазина", "Динамика региона", "Магазин к региону, п.п."];
+    let y = 1.45; const X = (i) => M + cw.slice(0, i).reduce((a, b) => a + b, 0);
+    hd.forEach((t, i) => gcell(sl, X(i), y, cw[i], 0.5, t, { fill: i === 4 ? "4A6FA5" : C.navy, c: C.white, b: true, fs: 10.5 }));
+    y += 0.5;
+    const h = Math.min(0.4, 4.9 / (L.length + 1));
+    const mx = Math.max(20, ...L.map((o) => Math.abs(o.dPct || 0)), ...L.map((o) => (RM[o.id] && isn(RM[o.id].dPct) ? Math.abs(RM[o.id].dPct) : 0)));
+    const sc = Math.min(mx, 100);
+    const bar = (x, w, v) => { if (!isn(v)) { txt(sl, "—", x, y, w, h, { fontSize: 10, color: C.muted, align: "center", valign: "middle" }); return; }
+      const mid = x + w / 2, bw = Math.min(Math.abs(v) / sc, 1) * (w / 2 - 0.12), col = v >= 0 ? "A7DDB4" : "F5B5AE";
+      sl.addShape(pres.shapes.RECTANGLE, { x: v >= 0 ? mid : mid - bw, y: y + 0.09, w: Math.max(bw, 0.02), h: h - 0.18, fill: { color: col }, line: { color: col, width: 0 } });
+      sl.addShape(pres.shapes.LINE, { x: mid, y: y + 0.04, w: 0, h: h - 0.08, line: { color: "9CA3AF", width: 0.75 } });
+      txt(sl, `${sgn(v, 0)}%`, v >= 0 ? x + 0.06 : mid + 0.06, y, w / 2 - 0.12, h, { fontSize: 10, bold: true, color: v >= 0 ? C.good : C.bad, valign: "middle" }); };
+    const line = (name, prev, cur, d1, d2, tot) => { const z = tot ? "E5E7EB" : L.indexOf(name) % 2 ? "F9FAFB" : C.white, dd = isn(d1) && isn(d2) ? d1 - d2 : null;
+      gcell(sl, X(0), y, cw[0], h, tot ? "Итого" : name.name, { al: "left", fill: z, fs: 10.5, b: tot });
+      gcell(sl, X(1), y, cw[1], h, fmt(prev / 1e6, 2), { fill: z, fs: 10.5, b: tot });
+      gcell(sl, X(2), y, cw[2], h, fmt(cur / 1e6, 2), { fill: z, fs: 10.5, b: true });
+      gcell(sl, X(3), y, cw[3], h, "", { fill: z }); bar(X(3), cw[3], d1);
+      gcell(sl, X(4), y, cw[4], h, "", { fill: "EEF3FA" }); bar(X(4), cw[4], d2);
+      gcell(sl, X(5), y, cw[5], h, sgn(dd, 0), { fill: HEAT(dd, 10), c: HTX(dd), b: true, fs: 12 });
+      y += h; };
+    L.forEach((o) => line(o, o.revPrev, o.rev, o.dPct, RM[o.id] ? RM[o.id].dPct : null));
+    const pc = (a, b) => (b > 0 ? (a / b - 1) * 100 : null);
+    line(null, r.cats.totalPrev, r.cats.total, pc(r.cats.total, r.cats.totalPrev), reg && reg.cats ? pc(reg.cats.total, reg.cats.totalPrev) : null, true);
+    fin(sl); return true;
+  }
+
+  // 3. Гросс-маржа по группам: магазины и регион, отклонение от региона
+  function vGroups(pres, mk, fin, stores, reg) {
+    if (!reg || !reg.ggroups || !reg.ggroups.list) return false;
+    const st = stores.filter((r) => r.ggroups && r.ggroups.list); if (!st.length) return false;
+    const SM = st.map((r) => Object.fromEntries(r.ggroups.list.map((o) => [o.id, o])));
+    const L = reg.ggroups.list.filter((o) => isn(o.pct) && o.gm > 0).sort((a, b) => b.gm - a.gm).slice(0, 13);
+    const ra = reg.gross && reg.gross.month ? reg.gross.month.pct : null;
+    const sl = mk("Гросс-маржа по группам товаров", `Маржа магазин${st.length > 1 ? "ов" : "а"} и ${reg.code.replace("Регион", "региона")} (LfL) по крупнейшим группам; справа — отклонение от региона, п.п.`);
+    const vw = 1.25, bwid = (W - 2 * M - 2.9 - vw * (st.length + 1)) / st.length;
+    const cw = [2.9].concat(st.map(() => vw), [vw], st.map(() => bwid));
+    const X = (i) => M + cw.slice(0, i).reduce((a, b) => a + b, 0);
+    let y = 1.45;
+    ["Группа товаров"].concat(st.map((r) => r.code), ["Регион"], st.map((r) => `${r.code} к региону`)).forEach((t, i) => gcell(sl, X(i), y, cw[i], 0.5, t, { fill: i === st.length + 1 ? "4A6FA5" : C.navy, c: C.white, b: true }));
+    y += 0.5;
+    const h = Math.min(0.37, 5.0 / (L.length + 1));
+    const mcol = (v) => (!isn(v) || !isn(ra) ? C.white : v < 0 ? "F4AFA6" : v < ra - 5 ? "FAD4CF" : v < ra - 1 ? "FFF1CC" : v < ra + 3 ? "E3F4E6" : "BFE5C6");
+    const dbar = (x, w, v) => { if (!isn(v)) { txt(sl, "—", x, y, w, h, { fontSize: 10, color: C.muted, align: "center", valign: "middle" }); return; }
+      const mid = x + w / 2, bw = Math.min(Math.abs(v) / 25, 1) * (w / 2 - 0.45), col = v >= 0 ? "7CC68E" : "EE8E84";
+      sl.addShape(pres.shapes.RECTANGLE, { x: v >= 0 ? mid : mid - bw, y: y + 0.08, w: Math.max(bw, 0.02), h: h - 0.16, fill: { color: col }, line: { color: col, width: 0 } });
+      sl.addShape(pres.shapes.LINE, { x: mid, y: y + 0.04, w: 0, h: h - 0.08, line: { color: "9CA3AF", width: 0.75 } });
+      txt(sl, sgn(v, 1), v >= 0 ? mid + bw + 0.04 : mid - bw - 0.62, y, 0.58, h, { fontSize: 10, bold: true, color: v >= 0 ? C.good : C.bad, align: v >= 0 ? "left" : "right", valign: "middle" }); };
+    const line = (name, vals, rv, tot, zi) => { const z = tot ? "E5E7EB" : zi % 2 ? "F9FAFB" : C.white;
+      gcell(sl, X(0), y, cw[0], h, name, { al: "left", b: tot, fill: z, fs: 10.5 });
+      vals.forEach((v, i) => gcell(sl, X(1 + i), y, vw, h, isn(v) ? `${fmt(v, 1)}%` : "—", { fill: mcol(v), b: true, c: isn(v) && v < 0 ? "7F1D1D" : C.ink, fs: 10.5 }));
+      gcell(sl, X(1 + st.length), y, vw, h, isn(rv) ? `${fmt(rv, 1)}%` : "—", { fill: "EEF3FA", b: true, fs: 10.5 });
+      vals.forEach((v, i) => { const x = X(2 + st.length + i); gcell(sl, x, y, cw[2 + st.length + i], h, "", { fill: z }); dbar(x, cw[2 + st.length + i], isn(v) && isn(rv) ? v - rv : null); });
+      y += h; };
+    line("Итого", st.map((r) => (r.gross && r.gross.month ? r.gross.month.pct : null)), ra, true, 0);
+    L.forEach((o, i) => line(o.name, SM.map((m) => (m[o.id] ? m[o.id].pct : null)), o.pct, false, i + 1));
+    fin(sl); return true;
+  }
+
+  // 4. Место в регионе: все LfL-магазины по гроссу и доле услуг, свои выделены
+  function vRank(pres, mk, fin, stores) {
+    const own = stores.map((r) => r.code), R = KPI.monthAn.rating(stores[0], own);
+    if (!R || (!R.gm.length && !R.srv.length)) return false;
+    const sl = mk("Место в регионе", `${R.lfl ? "Все сопоставимые (LfL) магазины" : "Все магазины"} региона ${R.region} по гросс-марже и доле услуг. Ваши магазины выделены`);
+    const chart = (x, w, title2, L) => {
+      txt(sl, title2, x, 1.45, w, 0.32, { fontSize: 14, bold: true, color: C.navy });
+      if (!L.length) { txt(sl, "Нет данных", x, 1.9, w, 0.3, { fontSize: 12, color: C.muted }); return; }
+      const top = 2.2, avail = H - 0.6 - top, rh = Math.min(0.42, avail / L.length), fs = rh < 0.17 ? 7 : rh < 0.21 ? 8 : 10;
+      const lw = 0.85, bw = w - lw - 0.75, mx = Math.max(...L.map((o) => o[1]), 0.1);
+      L.forEach(([c, v], i) => { const me = own.includes(c), yy = top + i * rh, col = me ? "F59E0B" : "A9BCD9", bl = Math.max(0, (v / mx) * bw);
+        txt(sl, `${i + 1}. ${c}`, x, yy, lw, rh, { fontSize: fs, bold: me, color: me ? "B45309" : C.ink, valign: "middle" });
+        sl.addShape(pres.shapes.RECTANGLE, { x: x + lw, y: yy + rh * 0.15, w: Math.max(bl, 0.02), h: rh * 0.7, fill: { color: col }, line: { color: col, width: 0 } });
+        txt(sl, `${fmt(v, 1)}%`, x + lw + bl + 0.05, yy, 0.7, rh, { fontSize: fs, bold: me, color: me ? "B45309" : C.muted, valign: "middle" }); });
+      const avg = L.reduce((a, b) => a + b[1], 0) / L.length, ax = x + lw + Math.max(0, (avg / mx) * bw);
+      sl.addShape(pres.shapes.LINE, { x: ax, y: top - 0.05, w: 0, h: L.length * rh + 0.1, line: { color: C.navy, width: 1, dashType: "dash" } });
+      txt(sl, `среднее по магазинам ${fmt(avg, 1)}%`, ax - 1.5, top - 0.32, 3, 0.25, { fontSize: 9.5, color: C.navy, align: "center" });
+    };
+    const hw = (W - 2 * M - 0.5) / 2;
+    chart(M, hw, "Гросс-маржа, % оборота", R.gm);
+    chart(M + hw + 0.5, hw, "Доля услуг, % оборота", R.srv);
+    fin(sl); return true;
+  }
+
   async function build(res) {
     const P = await lib();
     const pres = new P();
@@ -321,6 +482,21 @@
     pres.author = "Анализ KPI";
     sTitle(pres, res);
     let n = 1;
+    const RG = res.level === "store" ? KPI.monthAn.regionOf(res) : null;
+    if (RG) {   // магазин против региона: наглядные таблицы с раскраской + текстовые выводы
+      const mk = (t, sub) => { const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, t, sub); return sl; };
+      const fin = (sl) => footer(sl, res, ++n);
+      const PG = KPI.month.MONTHS_GEN[(res.Mo + 11) % 12].replace(/я$/, "ю").replace(/а$/, "у");
+      vKpi(pres, mk, fin, [res], [RG], res.monthLabel);
+      vCats(pres, mk, fin, res, RG, res.monthLabel, PG);
+      vGroups(pres, mk, fin, [res], RG);
+      n = sGross(pres, res, n, true);
+      vRank(pres, mk, fin, [res]);
+      n = sAcc(pres, res, n); n = sSrv(pres, res, n); n = sFindings(pres, res, n);
+      sActions(pres, res, n);
+      const browser = typeof window !== "undefined" && typeof document !== "undefined";
+      return pres.write({ outputType: browser ? "blob" : "nodebuffer", compression: true });
+    }
     n = sKpi(pres, res, n); n = sDrivers(pres, res, n); n = sGross(pres, res, n); n = sCats(pres, res, n);
     n = sAcc(pres, res, n); n = sSrv(pres, res, n); n = sStores(pres, res, n); n = sFindings(pres, res, n);
     sActions(pres, res, n);
@@ -399,24 +575,19 @@
     const T2 = split(2);
     // колонка «Регион»: итоги региона (ASM) магазинов страницы
     const regs = (st) => [...new Set(st.map((r) => AN.regionOf(r)).filter(Boolean))];
-    const T4 = R.list.some((r) => AN.regionOf(r)) ? split(3) : split(4);
-    const wr = (st) => st.concat(regs(st));
     const sfx = (arr, k) => (arr.length > 1 ? ` (${k + 1} из ${arr.length})` : "");
     let n = 0;
     const foot = (sl) => { txt(sl, `Итоги: ${R.monthLabel.toLowerCase()} · ${R.name}`, M, H - 0.42, 8, 0.25, { fontSize: 10, color: C.muted }); txt(sl, String(++n), W - M - 1, H - 0.42, 1, 0.25, { fontSize: 10, color: C.muted, align: "right" }); };
     const page = (t, sub, k, arr) => { const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, t + sfx(arr, k), sub); return sl; };
-    // 1. ключевые показатели и из чего сложился оборот — одна таблица и вывод
-    T4.forEach((st, k) => {
-      const sl = page(`Ключевые показатели — ${R.monthLabel.toLowerCase()}`, st.map((r) => `${r.code}${r.attrs && r.attrs.city ? " " + r.attrs.city : ""}`).join(", ") + ". К прошлому году и к прошлому месяцу; эффективность — рост оборота минус рост трафика", k, T4);
-      mTable(sl, AN.multiRows("main").concat([["Вывод", (r) => ({ note: facConclusion(r, wr(st).length > 2) })]]), wr(st), 1.38, H - 1.38 - 0.5, false, true);
-      foot(sl);
-    });
-    // 4. гросс-маржа и её влияние
-    if (R.list.some((r) => r.gross)) T4.forEach((st, k) => {
-      const sl = page("Гросс-маржа", "Сколько заработали на продажах: месяц, прошлый месяц, с начала года", k, T4);
-      mTable(sl, AN.multiRows("gross"), wr(st), 1.5, null, true);
-      foot(sl);
-    });
+    const PG = KPI.month.MONTHS_GEN[(R.Mo + 11) % 12].replace(/я$/, "ю").replace(/а$/, "у");
+    const mk = (t, sub) => { const sl = pres.addSlide(); sl.background = { color: C.white }; title(sl, t, sub); return sl; };
+    // 1. основные KPI — регион и магазины в одной таблице с раскраской
+    split(4).forEach((st) => vKpi(pres, mk, foot, st, regs(st), R.monthLabel));
+    // 2. категории каждого магазина против региона
+    R.list.forEach((r) => vCats(pres, mk, foot, r, AN.regionOf(r), R.monthLabel, PG));
+    // 3. гросс-маржа по группам: по 2 магазина одного региона на слайд
+    const byReg = {}; R.list.forEach((r) => { const g = AN.regionOf(r); const k2 = g ? g.code : "—"; (byReg[k2] = byReg[k2] || { g, list: [] }).list.push(r); });
+    Object.values(byReg).forEach(({ g, list }) => { for (let i = 0; i < list.length; i += 2) vGroups(pres, mk, foot, list.slice(i, i + 2), g); });
     // 5–6. гросс по группам товаров: топ-10 и антитоп-10
     if (R.list.some((r) => r.ggroups)) for (const [key, t, sub] of [["top", "Гросс: топ-10 групп товаров", "Гросс в рублях, доля в гроссе магазина, маржа магазина и региона: зелёная — выше региона, красная — ниже"],
       ["anti", "Гросс: антитоп-10 групп товаров", "Где зарабатываем меньше всего или продаём в минус; маржа зелёная — выше региона, красная — ниже"]]) {
@@ -436,23 +607,8 @@
         foot(sl);
       });
     }
-    // 7. категории (оборот): рост и падение
-    if (R.list.some((r) => r.cats)) T4.forEach((st, k) => {
-      const sl = page("Оборот по категориям", `${R.monthLabel} к прошлому месяцу: топ-10 роста и топ-10 падения, в рублях`, k, T4);
-      const gap = 0.3, cw = (W - 2 * M - gap * (st.length - 1)) / st.length;
-      st.forEach((r, i) => {
-        const x = M + i * (cw + gap);
-        txt(sl, [{ text: r.code + "  ", options: { bold: true, color: C.navy } }, { text: r.attrs ? r.attrs.city : "", options: { color: C.muted, fontSize: 12 } }], x, 1.45, cw, 0.35, { fontSize: 16 });
-        if (!r.cats) { txt(sl, "Нет данных по категориям", x, 1.9, cw, 0.3, { fontSize: 12, color: C.muted }); return; }
-        const num = st.length > 2 ? 0.95 : 1.15, nw = (cw - 2 * num) / 2;
-        const rows = Array.from({ length: 10 }, (_, j) => { const a = r.cats.top[j], b = r.cats.anti[j];
-          return [a ? a.name : "", a ? { t: rubS(a.d, true), c: C.good, b: true } : "", b ? b.name : "", b ? { t: rubS(b.d, true), c: C.bad, b: true } : ""]; });
-        table(sl, x, 1.85, [nw, num, nw, num], ["Рост", "₽", "Падение", "₽"], rows, { fontSize: st.length > 2 ? 9 : 10.5, rowH: 0.45, align: ["left", "right", "left", "right"] });
-      });
-      foot(sl);
-    });
-    // 8. аксессуары и услуги
-    if (R.list.some((r) => r.acc || r.srv)) T4.forEach((st, k) => { const sl = page("Аксессуары и услуги", "К прошлому году и к прошлому месяцу", k, T4); mTable(sl, AN.multiRows("mix").slice(1), wr(st), 1.5); foot(sl); });
+    // место в регионе: все LfL-магазины, свои выделены
+    Object.values(byReg).forEach(({ g, list }) => { if (g) vRank(pres, mk, foot, list); });
     // 9. где хорошо и где плохо — полностью, без сокращений
     T2.forEach((st, k) => {
       const sl = page("Где хорошо и где плохо", "По блокам: ● зелёный — хорошо, ● красный — плохо, ● жёлтый — по-разному", k, T2);
