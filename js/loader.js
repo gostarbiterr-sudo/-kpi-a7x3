@@ -239,14 +239,21 @@
     const say = progress || (() => {});
     const cands = [], info = [];
     const MM = KPI.month ? KPI.month.emptyModel() : null;
+    const HH = KPI.hours ? KPI.hours.empty() : null;
     const addInfo = (file, sheet, kind, period, region, d, rows, comment) =>
       info.push({ file, sheet, kind, period: PERIOD_RU[period] || "—", region, date: iso(d), rows, comment });
 
     for (const f of files) {
       const base = f.name;
       if (base.startsWith("~$")) continue;
-      if (!/\.(xlsx|xlsm|xlsb)$/i.test(base)) { addInfo(base, "", "не Excel", null, "", null, 0, "формат не поддерживается (нужен .xlsx, .xlsm или .xlsb)"); continue; }
+      if (!/\.(xlsx|xlsm|xlsb|xls)$/i.test(base)) { addInfo(base, "", "не Excel", null, "", null, 0, "формат не поддерживается (нужен .xlsx, .xlsm, .xlsb или .xls)"); continue; }
       say(`Читаю ${base}…`);
+      if (HH) {                          // «Часы и чеки»: почасовые R129 и график работы
+        const n0 = HH.files.length;
+        try { if (await KPI.hours.tryLoad(f, say, HH)) { HH.files.slice(n0).forEach((x) => addInfo(x.file, "", x.kind, null, "", null, x.rows, (x.kind === "не распознан" ? "" : "используется (часы и чеки). ") + x.comment)); continue; } }
+        catch (e) { addInfo(base, "", "часы и чеки", null, "", null, 0, `не удалось прочитать: ${e.message || e}`); console.error(e); continue; }
+      }
+      if (/\.xls$/i.test(base)) { addInfo(base, "", "не распознан", null, "", null, 0, "файл .xls не похож на график работы"); continue; }
       if (MM) {                          // ежемесячные отчёты («Итоги месяца»)
         const n0 = MM.files.length;
         try { if (await KPI.month.tryLoad(f, say, MM)) { MM.files.slice(n0).forEach((x) => addInfo(x.file, "", x.kind, null, "", null, x.rows, "используется (итоги месяца). " + x.comment)); continue; } }
@@ -335,7 +342,8 @@
       res.warnings.push("Файлы выгружены в разные дни: " + parts.join("; ") + ". Проверьте, что загружены свежие выгрузки.");
     }
     res.month = MM ? KPI.month.finalize(MM) : null;
-    const onlyMonth = !Object.keys(res.kpi).length && !Object.keys(res.emp).length && res.month;
+    res.hours = HH && KPI.hours.ready(HH) ? HH : null;
+    const onlyMonth = !Object.keys(res.kpi).length && !Object.keys(res.emp).length && (res.month || res.hours);
     if (!onlyMonth) for (const p of PERIODS) {
       if (!res.kpi[p]) res.warnings.push(`Нет KPI-файла за период «${PERIOD_RU[p]}» — анализ магазина за этот период недоступен.`);
       if (!res.emp[p]) res.warnings.push(`Нет вкладки сотрудников за период «${PERIOD_RU[p]}» — анализ продавцов за этот период недоступен.`);

@@ -19,7 +19,7 @@
 
   // ---------------------------------------------------------------- файлы
   async function addFiles(list) {
-    const arr = [...list].filter((f) => /\.(xlsx|xlsm|xlsb)$/i.test(f.name));
+    const arr = [...list].filter((f) => /\.(xlsx|xlsm|xlsb|xls)$/i.test(f.name));
     const skipped = [...list].length - arr.length;
     for (const f of arr) {
       const i = files.findIndex((x) => x.name === f.name);
@@ -48,7 +48,8 @@
     $("#storeBox").hidden = m !== "store";
     $("#regionBox").hidden = m !== "region";
     $("#monthBox").hidden = m !== "month";
-    $("#plansRow").hidden = m === "month";
+    $("#hoursBox").hidden = m !== "hours";
+    $("#plansRow").hidden = m === "month" || m === "hours";
     $("#choices").innerHTML = "";
   }
   function renderSetup() {
@@ -73,8 +74,18 @@
         loaded.warnings.map((w) => `<p class="warn">⚠ ${esc(w)}</p>`).join("") +
         `<details><summary>Что прочитано из файлов</summary><div class="rd">${loaded.files.map((r) =>
           `<div class="rdi ${r.comment.startsWith("используется") ? "used" : ""}"><b>${esc(r.file)}</b> · ${esc(r.sheet)}<br><small>${esc(r.kind)}${r.period !== "—" ? " · " + esc(r.period) : ""}${r.date ? " · " + esc(r.date) : ""} — ${esc(r.comment)}</small></div>`).join("")}</div></details>` : "");
-    const hasM = !!(loaded && loaded.month);
-    $("#step2").hidden = !loaded || (nStores === 0 && !hasM);
+    const hasM = !!(loaded && loaded.month), hasH = !!(loaded && loaded.hours);
+    $("#step2").hidden = !loaded || (nStores === 0 && !hasM && !hasH);
+    document.querySelector('#step2 .seg2 button[data-m="hours"]').hidden = !hasH;
+    if (hasH) {
+      const hs = KPI.hours.stores(loaded.hours);
+      $("#hCodes").innerHTML = hs.map((c) => `<option value="${esc(c)}">${esc(loaded.hours.names[c] || "")}</option>`).join("");
+      if (!$("#hCode").value) $("#hCode").value = store.get("kpi_last_hcode", Object.keys(loaded.hours.sched)[0] || "");
+      if (!$("#hD1").value) $("#hD1").value = store.get("kpi_h_d1", "");
+      if (!$("#hD2").value) $("#hD2").value = store.get("kpi_h_d2", "");
+      const sc = Object.keys(loaded.hours.sched);
+      $("#hInfo").textContent = `Магазинов в отчётах: ${hs.length}. Графики работы: ${sc.length ? sc.join(", ") : "не загружены"}. Из графика берутся только продавцы. Укажите даты колонок отчёта — по ним берутся смены из графика.`;
+    }
     document.querySelector('#step2 .seg2 button[data-m="store"]').hidden = nStores === 0;
     document.querySelector('#step2 .seg2 button[data-m="region"]').hidden = nStores === 0;
     document.querySelector('#step2 .seg2 button[data-m="month"]').hidden = !hasM;
@@ -86,7 +97,8 @@
       if (!$("#mCode").value) $("#mCode").value = store.get("kpi_last_mcode", "");
     }
     if (mode === "month" && !hasM) mode = "store";
-    if (mode !== "month" && nStores === 0 && hasM) mode = "month";
+    if (mode === "hours" && !hasH) mode = "store";
+    if (mode !== "month" && mode !== "hours" && nStores === 0) mode = hasM ? "month" : hasH ? "hours" : mode;
     $("#codes").innerHTML = loaded ? [...analysis.liveCodes(loaded)].sort().map((c) => `<option value="${esc(c)}">`).join("") : "";
     const sel = $("#region"), lastR = store.get("kpi_last_region", "");
     sel.innerHTML = regions.map((r) => `<option value="${esc(r.name)}"${r.name === lastR ? " selected" : ""}>${esc(r.level === "total" ? `${r.name} — весь регион` : `${r.name} (ASM)`)}</option>`).join("");
@@ -101,6 +113,7 @@
   const planOpts = () => ({ includeDay: store.get("kpi_inc_day", true) });
 
   function compute(obj) {
+    if (obj.type === "hours") return KPI.hours.analyze(loaded.hours, obj.code, { d1: obj.d1 ? new Date(obj.d1 + "T00:00:00Z") : null, d2: obj.d2 ? new Date(obj.d2 + "T00:00:00Z") : null });
     if (obj.type === "month") return obj.sel.level === "multi" ? KPI.monthAn.analyzeMulti(loaded.month, obj.sel.codes, norms()) : KPI.monthAn.analyze(loaded.month, obj.sel, norms());
     return obj.type === "store" ? analysis.analyze(loaded, obj.code, norms(), plans(), planOpts())
       : analysis.analyzeRegion(loaded, obj.name, norms(), plans(), planOpts());
@@ -217,13 +230,14 @@
     const r = report.build(result, { app: true });
     const host = $("#report");
     host.innerHTML = `<style>${r.css}</style>${r.body}`;
-    if (result.type !== "month" && result.type !== "monthMulti") addPicsTab(host);
+    if (result.type !== "month" && result.type !== "monthMulti" && result.type !== "hours") addPicsTab(host);
+    if (result.type === "hours") fillHours(host);
     report.bind(host);
     document.title = r.title;
     $("#setup").hidden = true;
     host.hidden = false;
     $("#bar").hidden = false;
-    $("#plansBtn").hidden = result.type === "month" || result.type === "monthMulti";
+    $("#plansBtn").hidden = result.type === "month" || result.type === "monthMulti" || result.type === "hours";
     $("#pptBtn").hidden = result.type !== "month" && result.type !== "monthMulti";
     window.scrollTo(0, 0);
     if (push) history.pushState({ report: 1 }, "");
@@ -293,7 +307,34 @@
     const name = `${result.type === "month" || result.type === "monthMulti" ? "itogi_mesyaca" : "otchet"}_${id}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.html`;
     return new File([html], name, { type: "text/html" });
   }
-  function save() { download(reportFile()); }
+  function save() { if (result && result.type === "hours") { (hoursImgs || []).forEach((o) => download(new File([o.blob], o.name, { type: "image/png" }))); return; } download(reportFile()); }
+  // ---- «Часы и чеки»: картинки рисуются после открытия отчёта
+  let hoursImgs = null;
+  async function fillHours(host) {
+    (hoursImgs || []).forEach((o) => URL.revokeObjectURL(o.url)); hoursImgs = null;
+    try {
+      const L = await KPI.hoursPic.images(result);
+      hoursImgs = L;
+      const box = host.querySelector("#hpImgs"); if (box) box.innerHTML = L.map((o) => `<img src="${o.url}" alt="${esc(o.name)}">`).join("");
+    } catch (e) { toast("Не удалось нарисовать картинки: " + (e.message || e)); console.error(e); }
+  }
+  async function shareHours() {
+    if (!hoursImgs) { toast("Картинки ещё рисуются"); return; }
+    const files = hoursImgs.map((o) => new File([o.blob], o.name, { type: "image/png" }));
+    if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ files }).catch(() => {});
+    else { files.forEach(download); toast("Картинки сохранены"); }
+  }
+  function runHours() {
+    if (!loaded || !loaded.hours) return;
+    const q = $("#hCode").value.trim().toUpperCase().replace(/А/g, "A").replace(/С/g, "S");
+    const hs = KPI.hours.stores(loaded.hours);
+    const code = hs.find((c) => c === q) || hs.find((c) => c.endsWith(q.replace(/^\D+/, "")) && q) || hs.find((c) => (loaded.hours.names[c] || "").toLowerCase().includes(q.toLowerCase()) && q);
+    if (!code) { toast("Магазин не найден в почасовых отчётах"); return; }
+    const d1 = $("#hD1").value, d2 = $("#hD2").value;
+    store.set("kpi_last_hcode", code); store.set("kpi_h_d1", d1); store.set("kpi_h_d2", d2);
+    if (!d1 || !d2) toast("Даты не указаны — продавцы по графику не будут показаны");
+    open({ type: "hours", code, d1, d2 });
+  }
   // ---- отправка картинкой: картинку готовим заранее, чтобы нажатие «Отправить» сразу открывало меню (иначе iOS теряет жест)
   let shPer = "month", shKind = "store", shImg = null, shUrl = null, shSeq = 0;
   function openShare() {
@@ -453,7 +494,9 @@
     $("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
     $("#back").onclick = () => history.back();
     $("#save").onclick = save;
-    $("#share").onclick = () => (result && (result.type === "month" || result.type === "monthMulti") ? presentation(true) : openShare());
+    $("#share").onclick = () => (result && result.type === "hours" ? shareHours() : result && (result.type === "month" || result.type === "monthMulti") ? presentation(true) : openShare());
+    $("#goH").onclick = runHours;
+    $("#hCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runHours(); });
     document.querySelectorAll("#shPer button").forEach((b) => (b.onclick = () => { shPer = b.dataset.p; renderShare(); }));
     document.querySelectorAll("#shKind button").forEach((b) => (b.onclick = () => { shKind = b.dataset.k; renderShare(); }));
     $("#shSend").onclick = sendImage;

@@ -437,6 +437,7 @@
   // ---------------------------------------------------------------- сборка
   const pbuttons = () => SHOW.map((p) => `<button class="pb" data-p="${p}">${PERIOD_RU[p]}</button>`).join("");
   function build(res, opts) {
+    if (res.type === "hours") return KPI.hoursPic.body(res);
     if (res.type === "month") return KPI.monthReport.build(res, CSS);
     if (res.type === "monthMulti") return KPI.monthReport.buildMulti(res, CSS);
     opts = opts || {};
