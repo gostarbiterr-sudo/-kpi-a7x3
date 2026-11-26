@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Анализ магазина</title>
 <meta name="description" content="Анализ KPI магазина и продавцов по выгрузкам. Файлы обрабатываются на устройстве.">
@@ -81,7 +81,6 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
 .mpl{max-height:46vh;overflow:auto;margin:8px 0}.mpl h4{margin:10px 0 4px;font-size:13px;color:var(--text2)}.mpl h4 button{font-size:12px!important;padding:2px 8px!important;margin-left:6px}
 .mpl label{display:flex;gap:8px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);font-size:15px}.mpl label small{color:var(--muted)}.mpl input{width:20px;height:20px}
 #mPick .row button{flex:1}
-#tableBox textarea,#tableBox input[type=text]{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);margin:6px 0}#tableBox .row{display:flex;gap:8px}#tableBox .row button{flex:1}#tbImg{width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#fff;margin:10px 0;display:block}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -133,21 +132,6 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
     <div id="choices"></div>
     <div class="row" id="plansRow"><button class="ghost" id="plansBtn2" type="button">🎯 Планы</button></div>
   </section>
-  <section class="box" id="tableBox">
-    <h2><span>+</span>Табличка в картинку</h2>
-    <p class="muted">Вставьте таблицу из Excel (выделите ячейки, Ctrl+C и вставьте сюда) или напечатайте строки: колонки через Tab, «;» или два пробела.</p>
-    <input id="tbPhoto" type="file" accept="image/*" capture="environment" hidden>
-    <button class="ghost" id="tbPhotoBtn" type="button" style="width:100%;margin:6px 0">📷 Фото таблицы</button>
-    <p class="muted" id="tbOcrInfo" hidden></p>
-    <textarea id="tbText" rows="6" spellcheck="false" placeholder="Пример:&#10;Магазин;Выручка;План&#10;A301;1 250 000;1 300 000"></textarea>
-    <input id="tbTitle" type="text" placeholder="Заголовок (необязательно)" autocomplete="off">
-    <label class="chk"><input type="checkbox" id="tbHead" checked> Первая строка — шапка</label>
-    <div class="row"><button id="tbMake" type="button">Сделать картинку</button><button class="ghost" id="tbClear" type="button">Очистить</button></div>
-    <div id="tbOut" hidden>
-      <img id="tbImg" alt="Картинка таблицы">
-      <div class="row"><button id="tbShare" type="button">↗ Отправить</button><button class="ghost" id="tbSave" type="button">⬇ Сохранить</button></div>
-    </div>
-  </section>
 </div>
 <div id="report" hidden></div>
 <nav id="bar" hidden><button class="ghost" id="back" type="button">← Назад</button><button class="ghost" id="plansBtn" type="button">🎯 Планы</button><button class="ghost" id="pptBtn" type="button" hidden>📊 Презентация</button><button class="ghost" id="save" type="button">⬇ Файл</button><button id="share" type="button">↗ Отправить</button></nav>
@@ -181,9 +165,6 @@ dialog::backdrop{background:rgba(0,0,0,.45)}dialog h2{font-size:17px;margin:0 0 
 <script src="js/xls.js"></script>
 <script src="js/hours.js"></script>
 <script src="js/hours_pic.js"></script>
-<script src="js/table_pic.js"></script>
-<script src="js/lib/tesseract.min.js"></script>
-<script src="js/photo_ocr.js"></script>
 <script src="js/share.js"></script>
 <script src="js/app.js"></script>
 </body>
