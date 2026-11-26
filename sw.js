@@ -1,6 +1,6 @@
 /* Офлайн-кэш приложения. Сами файлы с выгрузками сюда не попадают — только код приложения. */
-const VERSION = "kpi-v24";
-const FILES = ["./", "index.html", "manifest.webmanifest", "js/xlsx.js", "js/loader.js", "js/analysis.js", "js/report.js", "js/xparse.js", "js/month.js", "js/month_an.js", "js/month_report.js", "js/month_ppt.js", "js/lib/pptxgen.bundle.js", "js/xls.js", "js/hours.js", "js/hours_pic.js", "js/share.js", "js/app.js",
+const VERSION = "kpi-v26";
+const FILES = ["./", "index.html", "manifest.webmanifest", "js/xlsx.js", "js/loader.js", "js/analysis.js", "js/report.js", "js/xparse.js", "js/month.js", "js/month_an.js", "js/month_report.js", "js/month_ppt.js", "js/lib/pptxgen.bundle.js", "js/xls.js", "js/hours.js", "js/hours_pic.js", "js/table_pic.js", "js/photo_ocr.js", "js/lib/tesseract.min.js", "js/lib/worker.min.js", "js/lib/tesseract-core-simd-lstm.wasm.js", "js/lib/tesseract-core-simd-lstm.wasm", "tessdata/rus.traineddata", "js/share.js", "js/app.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" })))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

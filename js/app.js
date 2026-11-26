@@ -335,6 +335,60 @@
     if (!d1 || !d2) toast("Даты не указаны — продавцы по графику не будут показаны");
     open({ type: "hours", code, d1, d2 });
   }
+  // ---- табличка: вставленная таблица → картинка (как из Excel)
+  let tbBlob = null, tbUrl = null;
+  function tbClearOut() { if (tbUrl) URL.revokeObjectURL(tbUrl); tbUrl = null; tbBlob = null; $("#tbOut").hidden = true; $("#tbImg").removeAttribute("src"); }
+  async function makeTable() {
+    const text = $("#tbText").value;
+    const P = KPI.tablePic.parse(text);
+    if (!P.rows.length) { toast("Вставьте таблицу"); return; }
+    if (P.cut) toast("Таблица длиннее 300 строк — взяты первые 300");
+    try { store.set("kpi_tb_text", text); store.set("kpi_tb_title", $("#tbTitle").value); store.set("kpi_tb_head", $("#tbHead").checked); } catch (e) {}
+    try {
+      const c = KPI.tablePic.render(P.rows, { head: $("#tbHead").checked, title: $("#tbTitle").value });
+      const blob = await KPI.tablePic.png(c);
+      if (tbUrl) URL.revokeObjectURL(tbUrl);
+      tbBlob = blob; tbUrl = URL.createObjectURL(blob);
+      $("#tbImg").src = tbUrl; $("#tbOut").hidden = false;
+    } catch (e) { toast("Не удалось нарисовать картинку: " + (e.message || e)); console.error(e); }
+  }
+  async function shareTable() {
+    if (!tbBlob) { toast("Сначала сделайте картинку"); return; }
+    const f = new File([tbBlob], "tablica.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f] }).catch(() => {});
+    else { download(f); toast("Картинка сохранена"); }
+  }
+  function initTable() {
+    try {
+      $("#tbText").value = store.get("kpi_tb_text", "") || "";
+      $("#tbTitle").value = store.get("kpi_tb_title", "") || "";
+      $("#tbHead").checked = store.get("kpi_tb_head", true) !== false;
+    } catch (e) {}
+    $("#tbMake").onclick = makeTable;
+    $("#tbShare").onclick = shareTable;
+    $("#tbSave").onclick = () => { if (tbBlob) download(new File([tbBlob], "tablica.png", { type: "image/png" })); else toast("Сначала сделайте картинку"); };
+    $("#tbClear").onclick = () => { $("#tbText").value = ""; $("#tbTitle").value = ""; tbClearOut(); };
+    $("#tbText").addEventListener("input", () => { if (tbBlob) tbClearOut(); });
+    $("#tbPhotoBtn").onclick = () => $("#tbPhoto").click();
+    $("#tbPhoto").addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!f) return;
+      const info = $("#tbOcrInfo");
+      info.hidden = false; info.textContent = "Распознаю таблицу на фото…";
+      setBusy("Распознаю…");
+      try {
+        const r = await KPI.photoOcr.recognize(f, (st, p) => { if (st && /recogniz|loading/.test(st)) setBusy("Распознаю… " + Math.round(p * 100) + "%"); });
+        if (!r.text) { info.textContent = "Таблица не найдена. Попробуйте фото ровнее и ближе."; return; }
+        $("#tbText").value = r.text;
+        if (tbBlob) tbClearOut();
+        info.textContent = `Распознано строк: ${r.lines}, уверенность ${r.conf}%. Проверьте значения в поле ниже и нажмите «Сделать картинку». Колонки разделены табуляцией.`;
+      } catch (err) {
+        info.textContent = "Не удалось распознать фото: " + ((err && err.message) || err || "неизвестная ошибка");
+        console.error(err);
+      } finally { setBusy(""); }
+    });
+  }
   // ---- отправка картинкой: картинку готовим заранее, чтобы нажатие «Отправить» сразу открывало меню (иначе iOS теряет жест)
   let shPer = "month", shKind = "store", shImg = null, shUrl = null, shSeq = 0;
   function openShare() {
@@ -496,6 +550,7 @@
     $("#save").onclick = save;
     $("#share").onclick = () => (result && result.type === "hours" ? shareHours() : result && (result.type === "month" || result.type === "monthMulti") ? presentation(true) : openShare());
     $("#goH").onclick = runHours;
+    initTable();
     $("#hCode").addEventListener("keydown", (e) => { if (e.key === "Enter") runHours(); });
     document.querySelectorAll("#shPer button").forEach((b) => (b.onclick = () => { shPer = b.dataset.p; renderShare(); }));
     document.querySelectorAll("#shKind button").forEach((b) => (b.onclick = () => { shKind = b.dataset.k; renderShare(); }));
